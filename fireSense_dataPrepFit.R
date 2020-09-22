@@ -8,14 +8,14 @@ defineModule(sim, list(
   name = "fireSense_dataPrepFit",
   description = "",
   keywords = "",
-  authors = structure(list(list(given = c("First", "Middle"), family = "Last", role = c("aut", "cre"), email = "email@example.com", comment = NULL)), class = "person"),
+  authors = structure(list(list(given = c("Ian"), family = "Eddy", role = c("aut", "cre"), email = "ian.eddy@canada.ca", comment = NULL)), class = "person"),
   childModules = character(0),
   version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9000"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list(),
+  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".plotInitialTime", "numeric", NA, NA, NA,
@@ -27,17 +27,49 @@ defineModule(sim, list(
     defineParameter(".saveInterval", "numeric", NA, NA, NA,
                     "This describes the simulation time interval between save events."),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
-                    paste("Should this entire module be run with caching activated?",
-                          "This is generally intended for data-type modules, where stochasticity",
-                          "and time are not relevant"))
+                    paste("Should this entire module be run with caching activated? This is intended",
+                          "for data-type modules, where stochasticity and time are not relevant")),
+    defineParameter(name = "fireYears", class = "integer", default = 1991:2017,
+                    desc = "A numeric vector indicating which years should be extracted
+                    from the fire databases to use for fitting"),
+    defineParameter(name = "useCentroids", class = "logical", default = TRUE,
+                    desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
+                                 "or at the ignition points in sim$firePoints?"))
+    defineParameter("whichModulesToPrepare", "character",
+                    default = c("fireSense_IgnitionFit", "fireSense_IgnitionPredict", "fireSense_EscapeFit"),
+                    NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
   ),
   inputObjects = bindrows(
-    #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
+    expectsInput(objectName = "cohortData2001", objectClass = "data.table", sourceURL = NA,
+                 desc = paste0("Table that defines the cohorts by pixelGroup in 2001")),
+    expectsInput(objectName = "cohortData2011", objectClass = "data.table", sourceURL = NA,
+                 desc = paste0("Table that defines the cohorts by pixelGroup in 2011")),
+    expectsInput(objectName = "firePolys", objectClass = "list", sourceURL = NA,
+                 desc = paste0("List of SpatialPolygonsDataFrames representing annual fire polygons.",
+                               "This defaults to https://cwfis.cfs.nrcan.gc.ca/downloads/nbac/ and uses ",
+                               "the most current versions of the database (Nov or Sept 2019).",
+                               "List must be named with followign convention: 'year<numeric year>'")),
+    expectsInput(objectName = "flammableRTM", objectClass = "RasterLayer", sourceURL = NA,
+                 desc = "RTM without ice/rocks/urban/water. Flammable map with 0 and 1."),
+    expectsInput(objectName = 'landcoverGroups', objectClass = 'list', sourceURL = NA,
+                 desc = cat('a named list with values representing',
+                 'classes in rstLCC that are considered equivalent for the PCA',
+                 'e.g. \"forest\" = c(1:15), \"wetland\" = c(18, 31)')
+    expectsInput(objectName = "pixelGroupMap2001", objectClass = "RasterLayer", sourceURL = NA,
+                 desc = "RasterLayer that defines the pixelGroups for cohortData table in 2001"),
+    expectsInput(objectName = "pixelGroupMap2011", objectClass = "RasterLayer",
+                 desc = "RasterLayer that defines the pixelGroups for cohortData table in 2011"),
+    expectsInput(objectName = "rstLCC", objectClass = "RasterLayer", sourceURL = NA,
+                 desc = "Raster of land cover. Defaults to LCC05."),
+    expectsInput(objectName = 'historicalClimateRasters', objectClass = 'RasterStack', sourceURL = NA,
+                 desc = 'historical climate variables corresponding to "fireYears" parameter')
   ),
   outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = NA, objectClass = NA, desc = NA)
+    createsOutput(objectName = 'fireSense_fitCovariates', objectClass = 'data.table',
+                  desc = 'WIP - likely some data.table with burn status + covariates'),
+    createsOutput(objectName = 'fireSenseLCC', objectClass = 'RasterLayer',
+                  desc = 'rstLCC reclassified by landcoverGroups')
   )
 ))
 
@@ -55,63 +87,24 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       sim <- Init(sim)
 
       # schedule future event(s)
-      sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "fireSense_dataPrepFit", "plot")
-      sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "fireSense_dataPrepFit", "save")
+      if ("fireSense_IgnitionFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepIgnitionFitData")
+      if ("fireSense_EscapeFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData")
+      if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
+
     },
-    plot = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      #plotFun(sim) # uncomment this, replace with object to plot
-      # schedule future event(s)
-
-      # e.g.,
-      #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "fireSense_dataPrepFit", "plot")
-
-      # ! ----- STOP EDITING ----- ! #
+    prepIgnitionFitData = {
+      #fill as needed
     },
-    save = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "fireSense_dataPrepFit", "save")
-
-      # ! ----- STOP EDITING ----- ! #
+    prepEscapeFitData = {
+      #fill as needed
     },
-    event1 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
+    prepSpreadFitData = {
+      #this will handle the specific needs of spread not done in Init already
 
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "fireSense_dataPrepFit", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event2 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "fireSense_dataPrepFit", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
+    }
     warning(paste("Undefined event type: \'", current(sim)[1, "eventType", with = FALSE],
                   "\' in module \'", current(sim)[1, "moduleName", with = FALSE], "\'", sep = ""))
   )
@@ -123,9 +116,10 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  # # ! ----- EDIT BELOW ----- ! #
 
-  # ! ----- STOP EDITING ----- ! #
+  # some data prep that is essential to all three modules will happen here - e.g. reclassifying LCC?
+
+
 
   return(invisible(sim))
 }
@@ -191,7 +185,92 @@ Event2 <- function(sim) {
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
-  # ! ----- EDIT BELOW ----- ! #
+  if (!suppliedElsewhere("studyArea", sim)) {
+    stop("Please supply study area - this object is key")
+  }
+
+  if (!suppliedElsewhere("rasterToMatch", sim)) {
+    sim$rasterToMatch <- prepInputsLCC(destinationPath = dPath,
+                                       studyArea = sim$studyArea,
+                                       useCache = TRUE)
+  }
+
+  if (!all(suppliedElsewhere('cohortData2011', sim),
+           suppliedElsewhere("pixelGroupMap2011", sim),
+           suppliedElsewhere("pixelGroupMap2001", sim),
+           suppliedElsewhere('cohortData2001', sim)) {
+    stop("Stop - need cohortData and pixelGroupMap objects - contact module creators")
+  }
+
+  if (!suppliedElsewhere('landcoverGroups', sim)) {
+    sim$landcoverGroups <- list(
+      'forest' = c(1:15),
+      'wetland' = (19, 31, 32),
+      'nonTree' = c(16:18, 20:30),
+      'nonVeg' = c(33, 36:38) #wait what are 34/35
+    )
+  }
+
+  if (!suppliedElsewhere("firePolys", sim)){
+
+    sim$firePolys <- Cache(getFirePolygons, years = P(sim)$fireYears,
+                           studyArea = aggregate(sim$studyArea),
+                           pathInputs = Paths$inputPath, userTags = paste0("years:", range(P(sim)$fireYears)))
+  }
+  if (isTRUE(P(sim)$useCentroids)) {
+    if (!suppliedElsewhere("firePoints", sim)){
+      message("... preparing polyCentroids")
+      yr <- min(P(sim)$fireYears)
+      sim$firePoints <- Cache(mclapply, X = sim$firePolys,
+                              mc.cores = pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys)),
+                              function(X){
+                                print(yr)
+                                ras <- X
+                                ras$ID <- 1:NROW(ras)
+                                centCoords <- rgeos::gCentroid(ras, byid = TRUE)
+                                cent <- SpatialPointsDataFrame(centCoords,
+                                                               as.data.frame(ras))
+                                yr <<- yr + 1
+                                return(cent)
+                              },
+                              userTags = c("what:polyCentroids", "forWhat:fireSense_SpreadFit"),
+                              omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
+      names(sim$firePoints) <- names(sim$firePolys)
+
+    }
+  } else {
+
+    if (!suppliedElsewhere("firePoints", sim)){
+      sim$firePoints <- Cache(getFirePoints_NFDB,
+                              url = "http://cwfis.cfs.nrcan.gc.ca/downloads/nfdb/fire_pnt/current_version/NFDB_point.zip",
+                              studyArea = sim$studyArea,
+                              rasterToMatch = sim$rasterToMatch,
+                              NFDB_pointPath = file.path(Paths$inputPath, "NFDB_point"),
+                              years = P(sim)$fireYears,
+                              userTags = c("what:firePoints", "forWhat:fireSense_SpreadFit"))
+      crs(sim$firePoints) <- crs(sim$rasterToMatch)
+      names(sim$firePoints) <- names(sim$firePolys)
+    }
+  }
+
+  #this is important because centroids may be fewer than fires if fire polys were small
+  min1Fire <- lapply(sim$firePoints, length) > 0
+  sim$firePoints <- sim$firePoints[min1Fire]
+  sim$firePolys <- sim$firePolys[min1Fire]
+  if (length(sim$firePolys) != length(sim$firePoints)) {
+    stop("mismatched years between firePolys and firePoints")
+  }
+
+  if (!suppliedElsewhere("rstLCC", sim)){
+    sim$rstLCC <- prepInputsLCC(destinationPath = dPath,
+                                studyArea = sim$studyArea,
+                                useCache = TRUE)
+  }
+
+  if (!suppliedElsewhere("historicalClimateRasters", sim)) {
+    stop("please supply sim$historicalClimateRasters")
+  }
+
 
   # ! ----- STOP EDITING ----- ! #
   return(invisible(sim))
