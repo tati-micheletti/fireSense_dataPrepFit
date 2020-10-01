@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils'),
+  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils (>=0.0.2)'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".plotInitialTime", "numeric", NA, NA, NA,
@@ -34,7 +34,7 @@ defineModule(sim, list(
                     from the fire databases to use for fitting"),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
-                                 "or at the ignition points in sim$firePoints?"))
+                                 "or at the ignition points in sim$firePoints?")),
     defineParameter("whichModulesToPrepare", "character",
                     default = c("fireSense_IgnitionFit", "fireSense_IgnitionPredict", "fireSense_EscapeFit"),
                     NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
@@ -51,10 +51,6 @@ defineModule(sim, list(
                                "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput(objectName = "flammableRTM", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "RTM without ice/rocks/urban/water. Flammable map with 0 and 1."),
-    expectsInput(objectName = 'landcoverGroups', objectClass = 'list', sourceURL = NA,
-                 desc = cat('a named list with values representing',
-                 'classes in rstLCC that are considered equivalent for the PCA',
-                 'e.g. \"forest\" = c(1:15), \"wetland\" = c(18, 31)')
     expectsInput(objectName = "pixelGroupMap2001", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "RasterLayer that defines the pixelGroups for cohortData table in 2001"),
     expectsInput(objectName = "pixelGroupMap2011", objectClass = "RasterLayer",
@@ -62,14 +58,18 @@ defineModule(sim, list(
     expectsInput(objectName = "rstLCC", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "Raster of land cover. Defaults to LCC05."),
     expectsInput(objectName = 'historicalClimateRasters', objectClass = 'RasterStack', sourceURL = NA,
-                 desc = 'historical climate variables corresponding to "fireYears" parameter')
+                 desc = 'historical climate variables corresponding to "fireYears" parameter'),
+    expectsInput(objectName = 'studyArea', objectClass = 'SpatialPolygonsDataFrame', sourceURL = NA,
+                 desc = "studyArea that determines spatial boundaries of all data"),
+    expectsInput(objectName = 'terrainCovariates', objectClass = 'RasterStack', sourceURL = NA,
+                 desc = 'a raster stack of terrain covariates, e.g. elevation, topographic roughness')
   ),
   outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = 'fireSense_fitCovariates', objectClass = 'data.table',
-                  desc = 'WIP - likely some data.table with burn status + covariates'),
-    createsOutput(objectName = 'fireSenseLCC', objectClass = 'RasterLayer',
-                  desc = 'rstLCC reclassified by landcoverGroups')
+    createsOutput(objectName = 'fireSense_escapeFitCovariates', objectClass = 'data.table', desc = 'WIP'),
+    createsOutput(objectName = 'fireSense_ignitionFitCovariates', objectClass = 'data.table', desc = 'WIP'),
+    createsOutput(objectName = 'fireSense_spreadFitCovariates', objectClass = 'data.table',
+                  desc = 'WIP - a data.table with a bunch of covariates for burned and non-burned classes')
   )
 ))
 
@@ -104,7 +104,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
     prepSpreadFitData = {
       #this will handle the specific needs of spread not done in Init already
 
-    }
+    },
     warning(paste("Undefined event type: \'", current(sim)[1, "eventType", with = FALSE],
                   "\' in module \'", current(sim)[1, "moduleName", with = FALSE], "\'", sep = ""))
   )
@@ -116,8 +116,40 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-
+  browser()
   # some data prep that is essential to all three modules will happen here - e.g. reclassifying LCC?
+  #every fitting will need the cohortData objects split into cohortDataLong, with a wide layout with biomass and landcover
+  #Each fitting event will prepare the data tables of relevant events (ignition, spread, or escape) and MDC
+  #then, each event should join the tables
+  fireBufferedListDT <- Cache(bufferToArea,
+                              poly = sim$firePolys,
+                              polyName = names(sim$firePolys),
+                              rasterToMatch = sim$flammableRTM,
+                              verb = TRUE, areaMultiplier = multiplier,
+                              field = "NFIREID",
+                              cores = 27,
+                              minSize = P(sim)$minBufferSize,
+                              userTags = c("bufferToArea"),
+                              useCloud = P(sim)$useCloud_DE,
+                              cloudFolderID = P(sim)$cloudFolderID_DE,
+                              omitArgs = "cores")
+
+  ###################################################
+  # Post buffering, new issues --> must make sure points and buffers match
+  ###################################################
+
+  sim$firePoints <- Cache(harmonizeBufferAndPoints, cent = sim$firePoints,
+                          buff = fireBufferedListDT,
+                          ras = sim$flammableRTM,
+                          idCol = "NFIREID",
+                          userTags = c("module:fireSense_Spreadfit",
+                                       "objectName:firePoints",
+                                       "goal:matchBufferAndPoints",
+                                       "outFun:Cache"))
+
+  cohorts2001 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2001)
+  cohorts2011 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2011)
+
 
 
 
@@ -198,14 +230,14 @@ Event2 <- function(sim) {
   if (!all(suppliedElsewhere('cohortData2011', sim),
            suppliedElsewhere("pixelGroupMap2011", sim),
            suppliedElsewhere("pixelGroupMap2001", sim),
-           suppliedElsewhere('cohortData2001', sim)) {
+           suppliedElsewhere('cohortData2001', sim))) {
     stop("Stop - need cohortData and pixelGroupMap objects - contact module creators")
   }
 
   if (!suppliedElsewhere('landcoverGroups', sim)) {
     sim$landcoverGroups <- list(
       'forest' = c(1:15),
-      'wetland' = (19, 31, 32),
+      'wetland' = c(19, 31, 32),
       'nonTree' = c(16:18, 20:30),
       'nonVeg' = c(33, 36:38) #wait what are 34/35
     )
@@ -214,26 +246,33 @@ Event2 <- function(sim) {
   if (!suppliedElsewhere("firePolys", sim)){
 
     sim$firePolys <- Cache(getFirePolygons, years = P(sim)$fireYears,
-                           studyArea = aggregate(sim$studyArea),
-                           pathInputs = Paths$inputPath, userTags = paste0("years:", range(P(sim)$fireYears)))
+                           studyArea = sim$studyArea,
+                           destinationPath = dPath,
+                           useInnerCache = TRUE,
+                           userTags = c('firePolys', paste0("years:", range(P(sim)$fireYears))))
   }
   if (isTRUE(P(sim)$useCentroids)) {
     if (!suppliedElsewhere("firePoints", sim)){
       message("... preparing polyCentroids")
-      yr <- min(P(sim)$fireYears)
-      sim$firePoints <- Cache(mclapply, X = sim$firePolys,
+
+      centerFun <- function(x){
+        if (is.null(x)) {
+          return(NULL)
+        } else {
+          ras <- x
+          ras$ID <- 1:NROW(ras)
+          centCoords <- rgeos::gCentroid(ras, byid = TRUE)
+          cent <- SpatialPointsDataFrame(centCoords,
+                                         as.data.frame(ras))
+          return(cent)
+        }
+      }
+
+      sim$firePoints <- Cache(FUN = mclapply,
+                              X = sim$firePolys,
                               mc.cores = pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys)),
-                              function(X){
-                                print(yr)
-                                ras <- X
-                                ras$ID <- 1:NROW(ras)
-                                centCoords <- rgeos::gCentroid(ras, byid = TRUE)
-                                cent <- SpatialPointsDataFrame(centCoords,
-                                                               as.data.frame(ras))
-                                yr <<- yr + 1
-                                return(cent)
-                              },
-                              userTags = c("what:polyCentroids", "forWhat:fireSense_SpreadFit"),
+                              centerFun, #don't specify FUN argument or Cache will mistake it.
+                              userTags = c(currentModule(sim), 'firePoints'),
                               omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
       names(sim$firePoints) <- names(sim$firePolys)
 
