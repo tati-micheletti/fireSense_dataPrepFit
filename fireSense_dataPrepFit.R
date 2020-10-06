@@ -32,6 +32,8 @@ defineModule(sim, list(
     defineParameter(name = "fireYears", class = "integer", default = 1991:2017,
                     desc = "A numeric vector indicating which years should be extracted
                     from the fire databases to use for fitting"),
+    defineParameter(name = 'minBufferSize', 'numeric', 500, NA, NA,
+                    desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
                                  "or at the ignition points in sim$firePoints?")),
@@ -40,10 +42,16 @@ defineModule(sim, list(
                     NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
   ),
   inputObjects = bindrows(
+    expectsInput(objectName = 'DEM', objectClass = 'RasterLayer',
+                 sourceURL = 'https://drive.google.com/file/d/121x_CfWy2XP_-1av0cYE7sxUfb4pmsup/view?usp=sharing',
+                 desc = "DEM for deriving terrain metrics"),
     expectsInput(objectName = "cohortData2001", objectClass = "data.table", sourceURL = NA,
                  desc = paste0("Table that defines the cohorts by pixelGroup in 2001")),
     expectsInput(objectName = "cohortData2011", objectClass = "data.table", sourceURL = NA,
                  desc = paste0("Table that defines the cohorts by pixelGroup in 2011")),
+    expectsInput(objectName = 'DEM', objectClass = 'RasterLayer',
+                 sourceURL = 'https://drive.google.com/file/d/121x_CfWy2XP_-1av0cYE7sxUfb4pmsup/view?usp=sharing',
+                 desc = "DEM for deriving terrain metrics"),
     expectsInput(objectName = "firePolys", objectClass = "list", sourceURL = NA,
                  desc = paste0("List of SpatialPolygonsDataFrames representing annual fire polygons.",
                                "This defaults to https://cwfis.cfs.nrcan.gc.ca/downloads/nbac/ and uses ",
@@ -62,7 +70,9 @@ defineModule(sim, list(
     expectsInput(objectName = 'studyArea', objectClass = 'SpatialPolygonsDataFrame', sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
     expectsInput(objectName = 'terrainCovariates', objectClass = 'RasterStack', sourceURL = NA,
-                 desc = 'a raster stack of terrain covariates, e.g. elevation, topographic roughness')
+                 desc = 'a raster stack of terrain covariates, e.g. elevation, topographic roughness'),
+    expectsInput(objectName = 'SWI', objectClass = "RasterLayer", sourceURL = NA,
+                 desc = "Saga Wetness Index for terrain covariates")
   ),
   outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
@@ -116,22 +126,44 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  browser()
+
   # some data prep that is essential to all three modules will happen here - e.g. reclassifying LCC?
   #every fitting will need the cohortData objects split into cohortDataLong, with a wide layout with biomass and landcover
   #Each fitting event will prepare the data tables of relevant events (ignition, spread, or escape) and MDC
   #then, each event should join the tables
+  if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
+    stop("firePolys needs a numeric FIRE_ID column")
+  }
+
+  if (!is.numeric(sim$firePolys[[1]]$FIRE_ID)) {
+    message("need numeric FIRE_ID column in fire polygons. Coercing to numeric...")
+    #this is an annoying trait in the current NFBB
+    origNames <- names(sim$firePolys)
+    PointsAndPolys <- lapply(names(sim$firePolys), FUN = function(year, polys = sim$firePolys, points = sim$firePoints) {
+      polys <- polys[[year]]
+      points <- points[[year]] #get matching year
+      points <- points[points$FIRE_ID %in% polys$FIRE_ID,]
+      polys <- polys[polys$FIRE_ID %in% points$FIRE_ID,]
+      points$FIRE_ID <- as.numeric(as.factor(points$FIRE_ID))
+      polys$FIRE_ID <- as.numeric(as.factor(polys$FIRE_ID))
+      return(list(polys = polys, points = points))
+    })
+    sim$firePoints <- lapply(PointsAndPolys, FUN = function(x) {return(x[['points']])})
+    sim$firePolys <- lapply(PointsAndPolys, FUN = function(x) {return(x[['polys']])})
+    rm(PointsAndPolys)
+    names(sim$firePolys) <- origNames
+    names(sim$firePoints) <- origNames
+  }
+  browser()
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
-                              rasterToMatch = sim$flammableRTM,
+                              rasterToMatch = sim$rasterToMatch,
                               verb = TRUE, areaMultiplier = multiplier,
-                              field = "NFIREID",
-                              cores = 27,
+                              field = "FIRE_ID",
+                              cores = length(sim$firePolys),
                               minSize = P(sim)$minBufferSize,
                               userTags = c("bufferToArea"),
-                              useCloud = P(sim)$useCloud_DE,
-                              cloudFolderID = P(sim)$cloudFolderID_DE,
                               omitArgs = "cores")
 
   ###################################################
@@ -140,14 +172,19 @@ Init <- function(sim) {
 
   sim$firePoints <- Cache(harmonizeBufferAndPoints, cent = sim$firePoints,
                           buff = fireBufferedListDT,
-                          ras = sim$flammableRTM,
-                          idCol = "NFIREID",
-                          userTags = c("module:fireSense_Spreadfit",
-                                       "objectName:firePoints",
-                                       "goal:matchBufferAndPoints",
-                                       "outFun:Cache"))
+                          ras = sim$rasterToMatch,
+                          idCol = "FIRE_ID",
+                          userTags = c("harmonizeBufferAndPoints"))
 
-  cohorts2001 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2001)
+  # get pixelIDs pre2005 and post2005
+  pre2005Indices <- fireBufferedListDT[names(fireBufferedListDT) %in% paste0('years', min(P(sim)$fireYears)):2005] %>%
+    rbindlist(.) %>%
+
+  post2005Indices <- fireBufferedListDT[names(fireBufferedListDT) %in% paste0('years', 2006:max(P(sim)$fireYears))] %>%
+   rbindlist(.) %>%
+
+
+  cohorts2001 <- castCohortData(sim$cohortData2001, index = pre2005Indices, terrainCovariates = sim$terrainCovariates)
   cohorts2011 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2011)
 
 
@@ -292,12 +329,14 @@ Event2 <- function(sim) {
     }
   }
 
+
   #this is important because centroids may be fewer than fires if fire polys were small
   min1Fire <- lapply(sim$firePoints, length) > 0
   sim$firePoints <- sim$firePoints[min1Fire]
   sim$firePolys <- sim$firePolys[min1Fire]
   if (length(sim$firePolys) != length(sim$firePoints)) {
     stop("mismatched years between firePolys and firePoints")
+    #need to implement a better approach that matches each year's IDS
   }
 
   if (!suppliedElsewhere("rstLCC", sim)){
@@ -308,6 +347,13 @@ Event2 <- function(sim) {
 
   if (!suppliedElsewhere("historicalClimateRasters", sim)) {
     stop("please supply sim$historicalClimateRasters")
+  }
+
+
+
+  if (!suppliedElsewhere('terrainCovariates', sim)) {
+
+
   }
 
 
