@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils (>=0.0.2)'),
+  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils (>=0.0.2)', 'parallel'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".plotInitialTime", "numeric", NA, NA, NA,
@@ -52,6 +52,9 @@ defineModule(sim, list(
     expectsInput(objectName = 'DEM', objectClass = 'RasterLayer',
                  sourceURL = 'https://drive.google.com/file/d/121x_CfWy2XP_-1av0cYE7sxUfb4pmsup/view?usp=sharing',
                  desc = "DEM for deriving terrain metrics"),
+    expectsInput(objectName = 'firePoints', objectClass = 'list', sourceURL = NA,
+                 desc = paste0("list of spatialPointsDataFrame for each fire year",
+                               "with each point denoting an ignition location")),
     expectsInput(objectName = "firePolys", objectClass = "list", sourceURL = NA,
                  desc = paste0("List of SpatialPolygonsDataFrames representing annual fire polygons.",
                                "This defaults to https://cwfis.cfs.nrcan.gc.ca/downloads/nbac/ and uses ",
@@ -67,15 +70,20 @@ defineModule(sim, list(
                  desc = "Raster of land cover. Defaults to LCC05."),
     expectsInput(objectName = 'historicalClimateRasters', objectClass = 'RasterStack', sourceURL = NA,
                  desc = 'historical climate variables corresponding to "fireYears" parameter'),
+    expectsInput(objectName = 'rasterToMatch', objectClass = 'RasterLayer', sourceURL = NA,
+                 desc = "template raster for study area"),
     expectsInput(objectName = 'studyArea', objectClass = 'SpatialPolygonsDataFrame', sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
     expectsInput(objectName = 'terrainCovariates', objectClass = 'RasterStack', sourceURL = NA,
-                 desc = 'a raster stack of terrain covariates, e.g. elevation, topographic roughness'),
-    expectsInput(objectName = 'SWI', objectClass = "RasterLayer", sourceURL = NA,
-                 desc = "Saga Wetness Index for terrain covariates")
+                 desc = 'a raster stack of terrain covariates; defaults are elev, aspect, slope, TRI, TWI')
   ),
   outputObjects = bindrows(
-    #createsOutput("objectName", "objectClass", "output object description", ...),
+    createsOutput(objectName = 'firePolys', objectClass = 'list',
+                  desc = 'list of spatialPolygonDataFrame objects representing annual fires'),
+    createsOutput(objectName = 'firePoints', objectClass = 'list',
+                  desc = 'list of spatialPolygonDataFrame objects representing annual fire centroids'),
+    createsOutput(objectName = 'fireSense_terrainCovariates', objectClass = 'rasterStack',
+                  desc = 'terrain covariates used by both fitting and predicting'),
     createsOutput(objectName = 'fireSense_escapeFitCovariates', objectClass = 'data.table', desc = 'WIP'),
     createsOutput(objectName = 'fireSense_ignitionFitCovariates', objectClass = 'data.table', desc = 'WIP'),
     createsOutput(objectName = 'fireSense_spreadFitCovariates', objectClass = 'data.table',
@@ -154,7 +162,8 @@ Init <- function(sim) {
     names(sim$firePolys) <- origNames
     names(sim$firePoints) <- origNames
   }
-  browser()
+
+
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
@@ -177,14 +186,21 @@ Init <- function(sim) {
                           userTags = c("harmonizeBufferAndPoints"))
 
   # get pixelIDs pre2005 and post2005
-  pre2005Indices <- fireBufferedListDT[names(fireBufferedListDT) %in% paste0('years', min(P(sim)$fireYears)):2005] %>%
-    rbindlist(.) %>%
+  browser()
+  pre2005 <- names(fireBufferedListDT) %in% paste0('year', min(P(sim)$fireYears):2005)
 
-  post2005Indices <- fireBufferedListDT[names(fireBufferedListDT) %in% paste0('years', 2006:max(P(sim)$fireYears))] %>%
-   rbindlist(.) %>%
+  pre2005Indices <- fireBufferedListDT[pre2005]
+  pre2005Climate <- unstack(sim$historicalClimateRasters)[pre2005] # names are wrong because prepInputs isn't being used to source them :(
+  post2005Indices <- fireBufferedListDT[!pre2005]
+  post2005Climate <- unstack(sim$historicalClimateRasters)[!pre2005]
 
 
-  cohorts2001 <- castCohortData(sim$cohortData2001, index = pre2005Indices, terrainCovariates = sim$terrainCovariates)
+  cohorts2001 <- castCohortData(cohortData = sim$cohortData2001,
+                                pixelGroupMap = sim$pixelGroupMap2001,
+                                climateRasters = pre2005Climate,
+                                terrainRasters = sim$terrainCovariates,
+                                index = pre2005Indices)
+
   cohorts2011 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2011)
 
 
@@ -282,7 +298,7 @@ Event2 <- function(sim) {
 
   if (!suppliedElsewhere("firePolys", sim)){
 
-    sim$firePolys <- Cache(getFirePolygons, years = P(sim)$fireYears,
+    sim$firePolys <- Cache(fireSenseUtils::getFirePolygons, years = P(sim)$fireYears,
                            studyArea = sim$studyArea,
                            destinationPath = dPath,
                            useInnerCache = TRUE,
@@ -305,7 +321,7 @@ Event2 <- function(sim) {
         }
       }
 
-      sim$firePoints <- Cache(FUN = mclapply,
+      sim$firePoints <- Cache(FUN = parallel::mclapply,
                               X = sim$firePolys,
                               mc.cores = pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys)),
                               centerFun, #don't specify FUN argument or Cache will mistake it.
@@ -352,12 +368,17 @@ Event2 <- function(sim) {
 
 
   if (!suppliedElsewhere('terrainCovariates', sim)) {
-
+    sim$terrainCovariates <- Cache(fireSenseUtils::prepTerrainCovariates,
+                                   studyArea = sim$studyArea,
+                                   rasterToMatch = sim$rasterToMatch,
+                                   dPath = dPath,
+                                   landcover = sim$rstLCC,
+                                   userTags = c('terrainCovariates')
+    )
 
   }
 
 
-  # ! ----- STOP EDITING ----- ! #
   return(invisible(sim))
 }
 
