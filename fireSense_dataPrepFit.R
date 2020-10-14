@@ -29,6 +29,9 @@ defineModule(sim, list(
     defineParameter(".useCache", "logical", FALSE, NA, NA,
                     paste("Should this entire module be run with caching activated? This is intended",
                           "for data-type modules, where stochasticity and time are not relevant")),
+    defineParameter('areaMultiplier', class = 'numeric', 1, NA, NA,
+                    desc = paste('Either a scalar that will buffer areaMultiplier * fireSize or a function',
+                    'of fireSize. Default is 1. See fireSenseUtils::bufferToArea for help')),
     defineParameter(name = "fireYears", class = "integer", default = 1991:2017,
                     desc = "A numeric vector indicating which years should be extracted
                     from the fire databases to use for fitting"),
@@ -168,7 +171,7 @@ Init <- function(sim) {
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
                               rasterToMatch = sim$rasterToMatch,
-                              verb = TRUE, areaMultiplier = multiplier,
+                              verb = TRUE, areaMultiplier = P(sim)$areaMultiplier,
                               field = "FIRE_ID",
                               cores = length(sim$firePolys),
                               minSize = P(sim)$minBufferSize,
@@ -178,7 +181,6 @@ Init <- function(sim) {
   ###################################################
   # Post buffering, new issues --> must make sure points and buffers match
   ###################################################
-
   sim$firePoints <- Cache(harmonizeBufferAndPoints, cent = sim$firePoints,
                           buff = fireBufferedListDT,
                           ras = sim$rasterToMatch,
