@@ -15,7 +15,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils (>=0.0.2)', 'parallel'),
+  reqdPkgs = list('raster', 'sf', 'sp', 'data.table', 'PredictiveEcology/fireSenseUtils (>=0.0.2)', 'parallel', 'fastDummies'),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".plotInitialTime", "numeric", NA, NA, NA,
@@ -35,6 +35,8 @@ defineModule(sim, list(
     defineParameter(name = "fireYears", class = "integer", default = 1991:2017,
                     desc = "A numeric vector indicating which years should be extracted
                     from the fire databases to use for fitting"),
+    defineParameter(name = 'nonflammableLCC', class = 'numeric', c(0, 33, 36, 37, 38, 39), NA, NA,
+                    desc=  'non-flammable LCC in sim$rstLCC'),
     defineParameter(name = 'minBufferSize', 'numeric', 500, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
@@ -85,12 +87,12 @@ defineModule(sim, list(
                   desc = 'list of spatialPolygonDataFrame objects representing annual fires'),
     createsOutput(objectName = 'firePoints', objectClass = 'list',
                   desc = 'list of spatialPolygonDataFrame objects representing annual fire centroids'),
-    createsOutput(objectName = 'fireSense_terrainCovariates', objectClass = 'rasterStack',
-                  desc = 'terrain covariates used by both fitting and predicting'),
-    createsOutput(objectName = 'fireSense_escapeFitCovariates', objectClass = 'data.table', desc = 'WIP'),
-    createsOutput(objectName = 'fireSense_ignitionFitCovariates', objectClass = 'data.table', desc = 'WIP'),
-    createsOutput(objectName = 'fireSense_spreadFitCovariates', objectClass = 'data.table',
-                  desc = 'WIP - a data.table with a bunch of covariates for burned and non-burned classes')
+    createsOutput('fireSense_fitCovariates', objectClass = 'data.table',
+                  desc = 'table of all covariates for PCA fitting in ignition, escape, and spread modules'),
+    createsOutput('flammableMap', 'rasterLayer', desc = 'binary map determing which pixels to include in model'),
+    createsOutput(objectName = 'terrainDT', objectClass = 'data.table',
+                  desc = paste0('terrain rasters converted to data.table format - includes flammable class',
+                  'from flammableMap and LCC as dummy variables (these are static'))
   )
 ))
 
@@ -142,6 +144,40 @@ Init <- function(sim) {
   #every fitting will need the cohortData objects split into cohortDataLong, with a wide layout with biomass and landcover
   #Each fitting event will prepare the data tables of relevant events (ignition, spread, or escape) and MDC
   #then, each event should join the tables
+
+
+  #prep terrain
+  terrainDT <- lapply(names(sim$terrainCovariates), FUN = function(x){
+    y <- data.table(getValues(sim$terrainCovariates[[x]]))
+  }) %>%
+    dplyr::bind_cols(.)
+  setnames(terrainDT, names(sim$terrainCovariates))
+  setDT(terrainDT) #needed to pre-allocate space for new columns
+
+  set(terrainDT, j = 'pixelID', value = 1:ncell(sim$pixelGroupMap2001))
+  set(terrainDT, j = 'flammable', value = getValues(sim$flammableMap))
+  lcc <- data.table(pixelID = 1:ncell(sim$rstLCC), lcc = getValues(sim$rstLCC)) %>%
+    .[!lcc == 0,] %>%
+    .[, lcc := as.factor(lcc)] #make factor after else this error column forms the intercept
+  lcc <- Cache(fastDummies::dummy_cols, .data = lcc,
+                            select_columns = 'lcc',
+                            remove_selected_columns = TRUE,
+                            remove_first_dummy = TRUE,
+                            ignore_na = TRUE,
+  userTags = c("dummy_cols"))
+
+  #remove dummy columns of non-flammable
+
+  nonFlammableLCC <- paste0('lcc_', P(sim)$nonflammableLCC)
+  presentNonFlammable <- colnames(lcc)[colnames(lcc) %in% nonFlammableLCC]
+  set(lcc, NULL, j = presentNonFlammable, NULL) #removes nonflammable columns
+
+  sim$terrainDT <- terrainDT[lcc, on = c("pixelID")]
+  #keep the NAs because the pixelIndex is needed for joining with pixelGroupMap (which happens every year with predict mode)
+
+
+
+
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
     stop("firePolys needs a numeric FIRE_ID column")
   }
@@ -181,6 +217,8 @@ Init <- function(sim) {
   ###################################################
   # Post buffering, new issues --> must make sure points and buffers match
   ###################################################
+  #TODO: what was this function doing? Is it still needed here? Does it identify the one burned non-spread?
+  #perhaps fireSense_spreadFit will need it?
   sim$firePoints <- Cache(harmonizeBufferAndPoints, cent = sim$firePoints,
                           buff = fireBufferedListDT,
                           ras = sim$rasterToMatch,
@@ -188,26 +226,36 @@ Init <- function(sim) {
                           userTags = c("harmonizeBufferAndPoints"))
 
   # get pixelIDs pre2005 and post2005
-  browser()
+
   pre2005 <- names(fireBufferedListDT) %in% paste0('year', min(P(sim)$fireYears):2005)
 
   pre2005Indices <- fireBufferedListDT[pre2005]
-  pre2005Climate <- unstack(sim$historicalClimateRasters)[pre2005] # names are wrong because prepInputs isn't being used to source them :(
+  pre2005Climate <- sim$historicalClimateRasters[[names(pre2005Indices)]] %>%
+    unstack(.)
+  names(pre2005Climate) <- names(pre2005Indices)
+
   post2005Indices <- fireBufferedListDT[!pre2005]
-  post2005Climate <- unstack(sim$historicalClimateRasters)[!pre2005]
+  post2005Climate <- sim$historicalClimateRasters[[names(post2005Indices)]] %>%
+    unstack(.)
+  names(post2005Climate) <- names(post2005Indices)
 
 
   cohorts2001 <- castCohortData(cohortData = sim$cohortData2001,
                                 pixelGroupMap = sim$pixelGroupMap2001,
                                 climateRasters = pre2005Climate,
-                                terrainRasters = sim$terrainCovariates,
+                                terrainDT = sim$terrainDT,
                                 index = pre2005Indices)
 
-  cohorts2011 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2011)
+  cohorts2011 <- fireSenseUtils::castCohortData(cohortData = sim$cohortData2011,
+                                                climateRasters = post2005Climate,
+                                                pixelGroupMap = sim$pixelGroupMap2011,
+                                                terrainDT = sim$terrainDT,
+                                                index = post2005Indices)
 
-
-
-
+  fireSenseCovariates <- rbind(cohorts2011, cohorts2001)
+  fireSenseCovariates <- fireSenseCovariates[flammable == 1,]
+  set(fireSenseCovariates, NULL, 'flammable', NULL)
+  sim$fireSense_fitCovariates <- fireSenseCovariates
   return(invisible(sim))
 }
 
@@ -289,15 +337,6 @@ Event2 <- function(sim) {
     stop("Stop - need cohortData and pixelGroupMap objects - contact module creators")
   }
 
-  if (!suppliedElsewhere('landcoverGroups', sim)) {
-    sim$landcoverGroups <- list(
-      'forest' = c(1:15),
-      'wetland' = c(19, 31, 32),
-      'nonTree' = c(16:18, 20:30),
-      'nonVeg' = c(33, 36:38) #wait what are 34/35
-    )
-  }
-
   if (!suppliedElsewhere("firePolys", sim)){
 
     sim$firePolys <- Cache(fireSenseUtils::getFirePolygons, years = P(sim)$fireYears,
@@ -374,10 +413,16 @@ Event2 <- function(sim) {
                                    studyArea = sim$studyArea,
                                    rasterToMatch = sim$rasterToMatch,
                                    dPath = dPath,
-                                   landcover = sim$rstLCC,
                                    userTags = c('terrainCovariates')
     )
 
+  }
+
+  if (!suppliedElsewhere("flammableMap", sim)) {
+    sim$flammableMap <- LandR::defineFlammable(sim$rstLCC,
+                                               nonFlammClasses = P(sim)$nonflammableLCC,
+                                               mask = sim$rasterToMatch,
+                                               filename2 = file.path(dPath, 'flammableMap.tif'))
   }
 
 
