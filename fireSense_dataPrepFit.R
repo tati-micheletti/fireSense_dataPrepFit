@@ -47,23 +47,15 @@ defineModule(sim, list(
                     NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
   ),
   inputObjects = bindrows(
-    expectsInput(objectName = 'DEM', objectClass = 'RasterLayer',
-                 sourceURL = 'https://drive.google.com/file/d/121x_CfWy2XP_-1av0cYE7sxUfb4pmsup/view?usp=sharing',
-                 desc = "DEM for deriving terrain metrics"),
     expectsInput(objectName = "cohortData2001", objectClass = "data.table", sourceURL = NA,
                  desc = paste0("Table that defines the cohorts by pixelGroup in 2001")),
     expectsInput(objectName = "cohortData2011", objectClass = "data.table", sourceURL = NA,
                  desc = paste0("Table that defines the cohorts by pixelGroup in 2011")),
-    expectsInput(objectName = 'DEM', objectClass = 'RasterLayer',
-                 sourceURL = 'https://drive.google.com/file/d/121x_CfWy2XP_-1av0cYE7sxUfb4pmsup/view?usp=sharing',
-                 desc = "DEM for deriving terrain metrics"),
     expectsInput(objectName = 'firePoints', objectClass = 'list', sourceURL = NA,
                  desc = paste0("list of spatialPointsDataFrame for each fire year",
                                "with each point denoting an ignition location")),
     expectsInput(objectName = "firePolys", objectClass = "list", sourceURL = NA,
                  desc = paste0("List of SpatialPolygonsDataFrames representing annual fire polygons.",
-                               "This defaults to https://cwfis.cfs.nrcan.gc.ca/downloads/nbac/ and uses ",
-                               "the most current versions of the database (Nov or Sept 2019).",
                                "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput(objectName = "flammableRTM", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "RTM without ice/rocks/urban/water. Flammable map with 0 and 1."),
@@ -87,12 +79,12 @@ defineModule(sim, list(
                   desc = 'list of spatialPolygonDataFrame objects representing annual fires'),
     createsOutput(objectName = 'firePoints', objectClass = 'list',
                   desc = 'list of spatialPolygonDataFrame objects representing annual fire centroids'),
-    createsOutput('fireSense_fitCovariates', objectClass = 'data.table',
+    createsOutput(objectName = 'fireSense_fitCovariates', objectClass = 'data.table',
                   desc = 'table of all covariates for PCA fitting in ignition, escape, and spread modules'),
-    createsOutput('flammableMap', 'rasterLayer', desc = 'binary map determing which pixels to include in model'),
+    createsOutput(objectName ='flammableMap', 'rasterLayer', desc = 'binary map determing which pixels to include in model'),
     createsOutput(objectName = 'terrainDT', objectClass = 'data.table',
                   desc = paste0('terrain rasters converted to data.table format - includes flammable class',
-                  'from flammableMap and LCC as dummy variables (these are static'))
+                                'from flammableMap and LCC as dummy variables (these are static'))
   )
 ))
 
