@@ -250,9 +250,8 @@ Init <- function(sim) {
     .[value == 1,] %>%
     .$index
 
-  #this involves a large object (27 years of raster data converted to 3 columns)
+  #this involves a large object (27 years of raster data converted to 3 columns), year, pixelID, value
   #need it in one dt for PCA, but it is less efficient so we convert back to list of annual dts
-  browser()
   climatePCAdat <- Cache(climateRasterToDataTable,
                          historicalClimateRasters = sim$historicalClimateRasters,
                          Index = flammableIndex,
@@ -282,7 +281,6 @@ Init <- function(sim) {
       #if there is only one climate variable, no PCA
       climateComponents <-  climatePCAdat[[1]]
     }
-  browser()
 
     #put back into list form to reduce object size
     years <- sort(unique(climateComponents$year))
@@ -378,9 +376,6 @@ Init <- function(sim) {
   #save two data.tables, one with climate, one with veg
   sim$fireSense_nonAnnualFitCovariates <- fireSenseVegData[, .SD, .SDcols = colsToExtract]
   sim$fireSense_annualFitCovariates <- fireSense_annualFitCovariates
-  #lastly just save everything and subset the data correctly
-
-
 
   return(invisible(sim))
 }
