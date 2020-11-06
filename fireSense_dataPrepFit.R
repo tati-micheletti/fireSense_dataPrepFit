@@ -207,7 +207,7 @@ Init <- function(sim) {
   sim$landcoverDT <- lcc
   #save the lcc - it will be used by predict models and there's no reason to re-do these steps
 
-  #do veg PCA
+  #####do veg PCA####
   cohorts2001 <- castCohortData(cohortData = sim$cohortData2001,
                                 pixelGroupMap = sim$pixelGroupMap2001,
                                 lcc = lcc,
@@ -223,27 +223,18 @@ Init <- function(sim) {
   vegPCAdat <- rbind(cohorts2001, cohorts2011)
   rm(cohorts2001, cohorts2011, lcc)
 
-  ###*** move this chunk to fireSenseUtils - it should do PCA and convert to int ***###
-  vegTerrainPCA <- prcomp(vegPCAdat[, .SD, .SDcols = !c("pixelGroup", 'pixelID', 'year')],
-                          center = TRUE, scale. = TRUE, rank = 10)
-  sim$PCAveg <- vegTerrainPCA
-
-  #store as Integer
-  vegComponents <- as.data.table(vegTerrainPCA$x * 1000)
-  vegComponents <- vegComponents[, lapply(.SD, asInteger), .SDcols = colnames(vegComponents)]
-  vegComponents[, pixelID := vegPCAdat$pixelID]
-  ###*** end of chunk ***###
-
-  #year is preserved in fit, but not predict
-  vegComponents[, year := vegPCAdat$year] #need to preserve for logistic
-
-  rm(vegPCAdat)
+  ###*predict will run castCohortData and then makeVegTerrainPCA for predicting
+  vegList <- makeVegTerrainPCA(dataForPCA = vegPCAdat)
+  vegComponents <- vegList$vegComponents
+  sim$PCAveg <- vegList$vegTerrainPCA
+  rm(vegList, vegPCAdat)
 
   components <- paste0('PC', 1:P(sim)$PCAcomponentsForVeg)
   vegComponents <- vegComponents[, .SD, .SDcols = c(components, 'pixelID', 'year')]
   #rename components so climate/veg components distinguishable
   setnames(vegComponents, old = components, new = paste0("veg", components))
   rm(components)
+
 
   ####prep Climate components####
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
@@ -345,8 +336,11 @@ Init <- function(sim) {
   #takes veg PCA, optionally terrain PCA, and optional index to build covariates
   logisticCovariatesPre2005 <- rbindlist(pre2005Indices) %>%
     vegComponents[year < 2005][., on = c("pixelID")]
+  logisticCovariatesPre2005[is.na(year), year := 2001] #these are non-flammable indices
+
   logisticCovariatesPost2005 <- rbindlist(post2005Indices) %>%
     vegComponents[year > 2005][., on = c("pixelID")]
+  logisticCovariatesPost2005[is.na(year), year := 2011]
 
   # we want to collapse both time steps for logistic regression
   #but need to preserve structure of named lists for spreadFit
