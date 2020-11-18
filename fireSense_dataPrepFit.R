@@ -466,7 +466,6 @@ plotFun <- function(sim) {
   }
 
   if (!suppliedElsewhere("firePolys", sim)) {
-
     sim$firePolys <- Cache(fireSenseUtils::getFirePolygons, years = P(sim)$fireYears,
                            studyArea = sim$studyArea,
                            destinationPath = dPath,
@@ -497,10 +496,8 @@ plotFun <- function(sim) {
                               userTags = c(currentModule(sim), 'firePoints'),
                               omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
       names(sim$firePoints) <- names(sim$firePolys)
-
     }
   } else {
-
     if (!suppliedElsewhere("firePoints", sim)) {
       sim$firePoints <- Cache(getFirePoints_NFDB,
                               url = "http://cwfis.cfs.nrcan.gc.ca/downloads/nfdb/fire_pnt/current_version/NFDB_point.zip",
