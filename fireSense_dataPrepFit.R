@@ -377,7 +377,11 @@ Init <- function(sim) {
 prepare_SpreadFit <- function(sim) {
   #Put in format for DEOptim
   #Prepare annual spread fit covariates
-  years <- sort(unique(mod$climateComponents$year))
+  #this is a funny way to get years but avoids years with 0 fires
+  years <- paste0('year', P(sim)$fireYears)
+  yearsWithFire <- paste0("year", P(sim)$fireYears) %in% names(sim$firePolys)
+  years <- c(years)[yearsWithFire]
+
   #currently there are NAs in climate due to non-flammable pixels in fire buffer
   fireSense_annualSpreadFitCovariates <- lapply(years, FUN = function(x){
     thisYear <- mod$climateComponents[year == x,]
@@ -393,7 +397,7 @@ prepare_SpreadFit <- function(sim) {
   sim$fireSense_annualSpreadFitCovariates <- fireSense_annualSpreadFitCovariates
 
   #prepare non-annual spread fit covariates
-  pre2005 <- paste0('year', min(P(sim)$fireYears):2005)
+  pre2005 <- paste0('year', min(P(sim)$fireYears):2005)[yearsWithFire]
   pre2005Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2005]
   post2005Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2005]
   colsToExtract <- c('pixelID', sim$vegComponentsToUse)
