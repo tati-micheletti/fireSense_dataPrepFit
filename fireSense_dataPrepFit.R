@@ -141,7 +141,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
     },
     prepSpreadFitData = {
       #this will handle the specific needs of spread not done in Init already
-
     },
     warning(paste("Undefined event type: \'", current(sim)[1, "eventType", with = FALSE],
                   "\' in module \'", current(sim)[1, "moduleName", with = FALSE], "\'", sep = ""))
@@ -154,7 +153,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-
   ####prep terrain for PCA####
   terrainDT <- lapply(names(sim$terrainCovariates), FUN = function(x){
     y <- data.table(getValues(sim$terrainCovariates[[x]]))
@@ -235,7 +233,6 @@ Init <- function(sim) {
   setnames(vegComponents, old = components, new = paste0("veg", components))
   rm(components)
 
-
   ####prep Climate components####
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
     .[value == 1,] %>%
@@ -250,7 +247,7 @@ Init <- function(sim) {
   rm(flammableIndex)
 
   if (length(climatePCAdat) > 1) {
-    #havent planned this out yet, do call-merge  isnt working - we want a wide layout of n variables
+    # haven't planned this out yet, do call-merge  isn't working - we want a wide layout of n variables
     warning("running fireSense_dataPrepFit with two climate components is still in development")
     climatePCAdat$by <- c("pixelID", "year")
     #this merge fails - we want to go from lists of list of data.tables to a list of data.tables, with one variable for each stack
@@ -281,7 +278,6 @@ Init <- function(sim) {
       return(thisYear)
     })
     names(fireSense_annualFitCovariates) <- years
-
 
   ####prep fire data####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
