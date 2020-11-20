@@ -410,7 +410,7 @@ prepare_SpreadFit <- function(sim) {
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2005Indices), collapse = "_"),
                                                          paste(names(post2005Indices), collapse = "_"))
 
-  return(sim)
+  return(invisible(sim))
 }
 
 ### template for save events
