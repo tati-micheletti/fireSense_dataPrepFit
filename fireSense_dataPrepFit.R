@@ -51,7 +51,7 @@ defineModule(sim, list(
                     desc = 'currently unused - may be needed if using separate terrain and veg PCAs'),
     defineParameter(name = 'PCAcomponentsForVeg', 'numeric', 10, 1, NA,
                     desc = 'number of veg and terrain components to include in GLM'),
-    defineParameter(name = 'PCAcomponentsFromGLM', 'numeric', 4, 0, NA,
+    defineParameter(name = 'PCAcomponentsFromGLM', 'numeric', 5, 0, NA,
                     desc = 'the number of components to select from GLM model of burn ~ PCAcomponents' ),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
@@ -204,7 +204,7 @@ Init <- function(sim) {
   sim$firePoints <- Cache(harmonizeBufferAndPoints, cent = sim$firePoints,
                           buff = fireBufferedListDT,
                           ras = sim$flammableRTM,
-                          idCol = "FIRE_ID",
+                          idCol = "FIRE_ID", #this is different from default
                           userTags = c("harmonizeBufferAndPoints"))
 
   ####prep terrain for PCA####
@@ -319,6 +319,13 @@ Init <- function(sim) {
   } else {
     #if there is only one climate variable, no PCA
     climateComponents <-  climatePCAdat[[1]]
+    setDT(climateComponents)
+    climCol <- names(climateComponents)[!colnames(climateComponents) %in% c("pixelID", "year")]
+    #scale climCol to have unit variance and mean center
+    set(climateComponents, NULL, 'climPCA1',
+        scale(climateComponents[, .SD, .SDcols = climCol], center = TRUE, scale = TRUE))
+    climateComponents[, climPCA1 := asInteger(climPCA1 * 1000)]
+    climateComponents <- climateComponents[, .SD, .SDcols = c("pixelID", "climPCA1", "year")]
   }
   #this is to construct the formula,
   #whether there are multiple climate components or a single non-transformed variable
