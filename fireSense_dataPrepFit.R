@@ -543,7 +543,7 @@ plotFun <- function(sim) {
     sim$terrainCovariates <- Cache(fireSenseUtils::prepTerrainCovariates,
                                    studyArea = sim$studyArea,
                                    rasterToMatch = sim$rasterToMatch,
-                                   dPath = dPath,
+                                   destinationPath = dPath,
                                    userTags = c('terrainCovariates'))
   }
 
