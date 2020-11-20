@@ -459,11 +459,12 @@ plotFun <- function(sim) {
                            useInnerCache = TRUE,
                            userTags = c('firePolys', paste0("years:", range(P(sim)$fireYears))))
   }
+
   if (isTRUE(P(sim)$useCentroids)) {
     if (!suppliedElsewhere("firePoints", sim)) {
       message("... preparing polyCentroids")
 
-      centerFun <- function(x){
+      centerFun <- function(x) {
         if (is.null(x)) {
           return(NULL)
         } else {
