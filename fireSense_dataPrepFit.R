@@ -224,7 +224,7 @@ Init <- function(sim) {
   #if separate, just keep the PCA object, terrain won't change.
   #it should be combined with lcc for a single table that can be referenced during predict
   rm(terrainDT)
-browser()
+
   ## prep landcover for PCA
   # this can be made into a fireSenseUtils function, but it is only done once - here.
   lcc <- data.table(pixelID = 1:ncell(sim$rstLCC),
