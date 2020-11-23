@@ -251,10 +251,11 @@ Init <- function(sim) {
   setDT(lcc) #pre-allocate space for new columns
 
   for (i in names(sim$nonForestedLCCGroups)) {
-    class <- paste0('lcc_', sim$nonForestedLCCGroups[[i]])
-    set(lcc, NULL,  eval(i), rowSums(lcc[, .SD, .SDcols = class]))
+    classes <- paste0('lcc_', sim$nonForestedLCCGroups[[i]])
+    classes <- classes[classes %in% colnames(lcc)]
+    set(lcc, NULL,  eval(i), rowSums(lcc[, .SD, .SDcols = classes]))
   }
-  rm(class)
+  rm(classes)
   set(lcc, NULL, lccColsPreGroup, NULL)
   sim$landcoverDT <- lcc
   #save the lcc - it will be used by predict models
