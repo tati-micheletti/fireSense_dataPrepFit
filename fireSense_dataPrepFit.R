@@ -224,13 +224,13 @@ Init <- function(sim) {
   #if separate, just keep the PCA object, terrain won't change.
   #it should be combined with lcc for a single table that can be referenced during predict
   rm(terrainDT)
-
-  ####prep landcover for PCA####
-  #this can be made into a fireSenseUtils function, but it is only done once - here.
+browser()
+  ## prep landcover for PCA
+  # this can be made into a fireSenseUtils function, but it is only done once - here.
   lcc <- data.table(pixelID = 1:ncell(sim$rstLCC),
                     lcc = getValues(sim$rstLCC),
                     flammable = getValues(sim$flammableRTM)) %>%
-    .[!lcc == 0,] %>%
+    .[lcc != 0,] %>%
     .[!is.na(flammable),] %>%
     .[flammable == 1,] %>%
     .[, lcc := as.factor(lcc)]
@@ -555,7 +555,7 @@ plotFun <- function(sim) {
       'shrubland' = c(16, 22),
       'wetland' = c(19, 23),
       'cropland' = c(26, 27, 28, 29),
-      'grassland' = c(17, 18, 21, 24)
+      'grassland' = c(17, 18, 21, 24) ## TODO: what about 30?
     )
   }
 
