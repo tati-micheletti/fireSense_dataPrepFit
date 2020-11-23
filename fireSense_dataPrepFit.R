@@ -41,7 +41,7 @@ defineModule(sim, list(
     defineParameter(name = 'forestedLCC', class = 'numeric', default = c(1:15, 20, 34, 35), NA, NA,
                     desc = paste0('forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.',
                                   'These classes will be excluded from the PCA')),
-    defineParameter(name = 'nonflammableLCC', class = 'numeric', c(0, 33, 36, 37, 38, 39), NA, NA,
+    defineParameter(name = 'nonflammableLCC', class = 'numeric', c(0, 25, 30, 33, 36, 37, 38, 39), NA, NA,
                     desc = 'non-flammable LCC in sim$rstLCC'),
     defineParameter(name = 'minBufferSize', 'numeric', 500, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
@@ -567,9 +567,9 @@ plotFun <- function(sim) {
   if (!suppliedElsewhere('nonForestedLCCGroups', sim)) {
     sim$nonForestedLCCGroups <- list(
       'shrubland' = c(16, 22),
-      'wetland' = c(19, 23, 32),
+      'wetland' = c(19, 23),
       'cropland' = c(26, 27, 28, 29),
-      'grassland' = c(17, 18, 21, 24, 26, 30)
+      'grassland' = c(17, 18, 21, 24)
     )
   }
 
