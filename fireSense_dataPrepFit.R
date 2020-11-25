@@ -303,7 +303,7 @@ Init <- function(sim) {
 
   if (length(climatePCAdat) > 1) {
     warning("running fireSense_dataPrepFit with two climate components is still in development")
-    #TODO this is untested
+    ## TODO: this is untested
     climatePCAdat <- Reduce(x = climatePCAdat, function(x, y, ...) merge(x, y , ...))
     climatePCA <- prcomp(climatePCAdat[, .SD, .SDcols = !c("pixelID", "year")],
                          center = TRUE,
