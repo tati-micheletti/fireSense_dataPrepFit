@@ -94,16 +94,18 @@ defineModule(sim, list(
   outputObjects = bindrows(
     createsOutput(objectName = 'climateComponentsToUse', objectClass = 'character',
                   desc = "names of the climate components or variables needed for FS models"),
+    createsOutput(objectName = 'fireBufferedListDT', objectClass = 'list',
+                  desc = 'list of data.tables with fire id, pixelID, and buffer status'),
     createsOutput(objectName = 'firePolys', objectClass = 'list',
                   desc = 'list of spatialPolygonDataFrame objects representing annual fires'),
     createsOutput(objectName = 'firePoints', objectClass = 'list',
                   desc = 'list of spatialPolygonDataFrame objects representing annual fire centroids'),
-    createsOutput(objectName = 'fireSense_annualSpreadFitCovariates', objectClass = 'data.table',
-                  desc = 'table of climate PCA components, burn status, polyID, and pixelID'),
+    createsOutput(objectName = 'fireSense_annualSpreadFitCovariates', objectClass = 'list',
+                  desc = 'list of tables with climate PCA components, burn status, polyID, and pixelID'),
     createsOutput(objectName = 'fireSense_formula', objectClass = 'formula',
                   desc = 'formula for ignition, escape, and spread, using climate and terrain components'),
-    createsOutput(objectName = 'fireSense_nonAnnualSpreadFitCovariates', objectClass = 'data.table',
-                  desc = 'table of veg PCA components, burn status, polyID, and pixelID'),
+    createsOutput(objectName = 'fireSense_nonAnnualSpreadFitCovariates', objectClass = 'list',
+                  desc = 'list of two tables with veg PCA components, burn status, polyID, and pixelID'),
     createsOutput(objectName = 'fireSense_spreadLogitModel', objectClass = 'glm',
                   desc = 'GLM with burn as dependent variable and PCA components as covariates'),
     createsOutput(objectName = 'landcoverDT', 'data.table',
@@ -260,6 +262,7 @@ Init <- function(sim) {
   sim$landcoverDT <- lcc
   #save the lcc - it will be used by predict models
 
+
   #####do veg PCA####
   cohorts2001 <- castCohortData(cohortData = sim$cohortData2001,
                                 pixelGroupMap = sim$pixelGroupMap2001,
@@ -275,6 +278,20 @@ Init <- function(sim) {
 
   vegPCAdat <- rbind(cohorts2001, cohorts2011)
   rm(cohorts2001, cohorts2011, lcc)
+
+  #Clean up missing pixels - this is a temporary fix
+  #we will always have NAs because of edge pixels - will be an issue when predicting
+  origNames <- names(fireBufferedListDT)
+  fireBufferedListDT <- lapply(fireBufferedListDT, FUN = function(year){
+    missingPixels <- year[!pixelID %in% vegPCAdat$pixelID]
+    if (nrow(missingPixels) > 0) {
+      year <- year[!pixelID %in% missingPixels$pixelID]
+    }
+    return(year)
+  })
+  names(fireBufferedListDT) <- origNames
+  rm(origNames)
+
 
   ###*predict will run castCohortData and then makeVegTerrainPCA for predicting
   vegList <- makeVegTerrainPCA(dataForPCA = vegPCAdat)
@@ -347,6 +364,9 @@ Init <- function(sim) {
     vegComponents[year > 2005][., on = c("pixelID")]
   logisticCovariatesPost2005[is.na(year), year := 2011]
 
+  #Some pixels will be NA because the polygon includes non-flammable cells
+  #As long as these pixels are also NA in climate data, no issue
+
   # we want to collapse both time steps for logistic regression
   #but need to preserve structure of named lists for spreadFit
   fireSenseVegData <- rbind(logisticCovariatesPost2005, logisticCovariatesPre2005)
@@ -397,6 +417,7 @@ prepare_SpreadFit <- function(sim) {
     annualFireSenseDT <- sim$fireBufferedListDT[[x]]
     thisYear <- thisYear[pixelID %in% annualFireSenseDT$pixelID,]
     thisYear <- na.omit(thisYear)
+    thisYear <- as.data.table(thisYear)
     #NAs are possible from raster projection issues and non-flammable buffer pixels
     return(thisYear)
   })
@@ -410,9 +431,11 @@ prepare_SpreadFit <- function(sim) {
   post2005Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2005]
   colsToExtract <- c('pixelID', sim$vegComponentsToUse)
   annualPre2005 <- mod$fireSenseVegData[year < 2005, .SD, .SDcols = colsToExtract] %>%
-    na.omit(.)
+    na.omit(.) %>%
+    as.data.table(.)
   annualPost2005 <- mod$fireSenseVegData[year > 2005, .SD, .SDcols = colsToExtract] %>%
-    na.omit(.)
+    na.omit(.) %>%
+    as.data.table(.)
   sim$fireSense_nonAnnualSpreadFitCovariates <- list(annualPre2005, annualPost2005)
 
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2005Indices), collapse = "_"),
@@ -534,7 +557,7 @@ plotFun <- function(sim) {
   }
 
   if (!suppliedElsewhere('terrainCovariates', sim)) {
-    sim$terrainCovariates <- Cache(fireSenseUtils::prepTerrainCovariates,
+     sim$terrainCovariates <- Cache(fireSenseUtils::prepTerrainCovariates,
                                    studyArea = sim$studyArea,
                                    rasterToMatch = sim$rasterToMatch,
                                    destinationPath = dPath,
