@@ -191,13 +191,14 @@ Init <- function(sim) {
     names(sim$firePoints) <- origNames
   }
 
+  nCores <- ifelse(grep('*Windows', osVersion), 1, length(sim$firePolys))
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
                               rasterToMatch = sim$flammableRTM,
                               verb = TRUE, areaMultiplier = P(sim)$areaMultiplier,
                               field = "FIRE_ID",
-                              cores = length(sim$firePolys),
+                              cores = nCores,
                               minSize = P(sim)$minBufferSize,
                               userTags = c("bufferToArea"),
                               omitArgs = "cores")
@@ -509,13 +510,17 @@ plotFun <- function(sim) {
           return(cent)
         }
       }
-
-      sim$firePoints <- Cache(FUN = parallel::mclapply,
-                              X = sim$firePolys,
-                              mc.cores = pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys)),
-                              centerFun, #don't specify FUN argument or Cache will mistake it.
+      mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
+      clObj <- parallel::makeCluster(type = 'SOCK', mc)
+      a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
+      clusterExport(cl = clObj, list('firePolys'), envir = sim)
+      sim$firePoints <- Cache(FUN = parallel::clusterApply,
+                              x = sim$firePolys,
+                              cl = clObj,
+                              fun = centerFun, #don't specify FUN argument or Cache will mistake it.
                               userTags = c(currentModule(sim), 'firePoints'),
                               omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
+      stopCluster(clObj)
       names(sim$firePoints) <- names(sim$firePolys)
     }
   } else {
