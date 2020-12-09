@@ -53,6 +53,8 @@ defineModule(sim, list(
                     desc = 'number of veg and terrain components to include in GLM'),
     defineParameter(name = 'PCAcomponentsFromGLM', 'numeric', 5, 0, NA,
                     desc = 'the number of components to select from GLM model of burn ~ PCAcomponents' ),
+    defineParameter(name = 'sppEquivCol', class = 'character', default = 'LandR', NA, NA,
+                    desc = 'column name in sppEquiv object that defines unique species in cohortData'),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
                                  "or at the ignition points in sim$firePoints?")),
@@ -88,6 +90,8 @@ defineModule(sim, list(
                  desc = "template raster for study area"),
     expectsInput(objectName = 'studyArea', objectClass = 'SpatialPolygonsDataFrame', sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
+    expectsInput(objectName = 'sppEquiv', objectClass = 'data.table',
+                 desc = 'table of species equivalencies. See LandR::sppEquivalencies_CA.'),
     expectsInput(objectName = 'terrainCovariates', objectClass = 'RasterStack', sourceURL = NA,
                  desc = 'a raster stack of terrain covariates; defaults are elev, aspect, slope, TRI, TWI')
   ),
@@ -102,8 +106,10 @@ defineModule(sim, list(
                   desc = 'list of spatialPolygonDataFrame objects representing annual fire centroids'),
     createsOutput(objectName = 'fireSense_annualSpreadFitCovariates', objectClass = 'list',
                   desc = 'list of tables with climate PCA components, burn status, polyID, and pixelID'),
-    createsOutput(objectName = 'fireSense_formula', objectClass = 'formula',
-                  desc = 'formula for ignition, escape, and spread, using climate and terrain components'),
+    createsOutput(objectName = 'fireSense_spreadFormula', objectClass = 'formula',
+                  desc = 'formula for spread, using climate and terrain components'),
+    createsOutput(objectName = 'fireSense_ignitionFormula', objectClass = 'formula',
+                  desc = 'formula for ignition, using fuel classes and landcover'),
     createsOutput(objectName = 'fireSense_nonAnnualSpreadFitCovariates', objectClass = 'list',
                   desc = 'list of two tables with veg PCA components, burn status, polyID, and pixelID'),
     createsOutput(objectName = 'fireSense_spreadLogitModel', objectClass = 'glm',
@@ -397,7 +403,7 @@ Init <- function(sim) {
 
   mod$fireSenseVegData <- fireSenseVegData
   mod$climateComponents <- climateComponents #needed by prep spread
-  sim$fireSense_formula <- as.formula(paste('~0 + ', paste(RHS)))
+  sim$fireSense_spreadFormula <- as.formula(paste('~0 + ', paste(RHS)))
   sim$fireBufferedListDT <- fireBufferedListDT #needed by DEOptim
 
   return(invisible(sim))
@@ -443,6 +449,13 @@ prepare_SpreadFit <- function(sim) {
                                                          paste(names(post2005Indices), collapse = "_"))
 
   return(invisible(sim))
+}
+
+prepare_IgnitionFit <- function(sim) {
+  browser()
+  #need to aggregate raster, after first coaxing out the biomass fuel classes.
+  #make 4 rasters, 1 of each LCC. Add to biomass fuel classes. Then just aggregate?
+  #Then define formula
 }
 
 ### template for save events
