@@ -102,8 +102,6 @@ defineModule(sim, list(
                   desc = 'list of data.tables with fire id, pixelID, and buffer status'),
     createsOutput(objectName = 'firePolys', objectClass = 'list',
                   desc = 'list of spatialPolygonDataFrame objects representing annual fires'),
-    createsOutput(objectName = 'firePoints', objectClass = 'list',
-                  desc = 'list of spatialPolygonDataFrame objects representing annual fire centroids'),
     createsOutput(objectName = 'fireSense_annualSpreadFitCovariates', objectClass = 'list',
                   desc = 'list of tables with climate PCA components, burn status, polyID, and pixelID'),
     createsOutput(objectName = 'fireSense_spreadFormula', objectClass = 'formula',
@@ -114,6 +112,9 @@ defineModule(sim, list(
                   desc = 'list of two tables with veg PCA components, burn status, polyID, and pixelID'),
     createsOutput(objectName = 'fireSense_spreadLogitModel', objectClass = 'glm',
                   desc = 'GLM with burn as dependent variable and PCA components as covariates'),
+    createsOutput(objectName = 'ignitionFirePoints', objectClass = 'list',
+                  desc = paste('list of spatialPolygonDataFrame objects representing annual ignition locations.',
+                               'This includes all fires regardless of size')),
     createsOutput(objectName = 'landcoverDT', 'data.table',
                   desc = paste('data.table with pixelID and relevant landcover classes',
                                'that is used by predict functions')),
@@ -123,6 +124,9 @@ defineModule(sim, list(
                   desc = 'PCA model for veg and LCC covariates, needed for FS models'),
     createsOutput(objectName = 'vegComponentsToUse', 'character',
                   desc = 'names of the veg components to use in ignition, escape, and spread predict models'),
+    createsOutput(objectName = 'spreadFirePoints', objectClass = 'list',
+                  desc = paste('list of spatialPolygonDataFrame objects representing annual fire centroids.',
+                               'This only includes fires that escaped (e.g. size > flammableRTM resolution')),
     createsOutput(objectName = 'terrainDT', 'data.table',
                   desc = 'data.table with pixelID and relevant terrain variables used by predict models')
   )
@@ -180,7 +184,7 @@ Init <- function(sim) {
     message("need numeric FIRE_ID column in fire polygons. Coercing to numeric...")
     #this is true of the current NFBB
     origNames <- names(sim$firePolys)
-    PointsAndPolys <- lapply(names(sim$firePolys), FUN = function(year, polys = sim$firePolys, points = sim$firePoints) {
+    PointsAndPolys <- lapply(names(sim$firePolys), FUN = function(year, polys = sim$firePolys, points = sim$spreadFirePoints) {
       polys <- polys[[year]]
       points <- points[[year]]
       #ensure matching IDs
@@ -190,11 +194,11 @@ Init <- function(sim) {
       polys$FIRE_ID <- as.numeric(as.factor(polys$FIRE_ID))
       return(list(polys = polys, points = points))
     })
-    sim$firePoints <- lapply(PointsAndPolys, FUN = function(x) {return(x[['points']])})
+    sim$spreadFirePoints <- lapply(PointsAndPolys, FUN = function(x) {return(x[['points']])})
     sim$firePolys <- lapply(PointsAndPolys, FUN = function(x) {return(x[['polys']])})
     rm(PointsAndPolys)
     names(sim$firePolys) <- origNames
-    names(sim$firePoints) <- origNames
+    names(sim$spreadFirePoints) <- origNames
   }
 
   nCores <- ifelse(grep('*Windows', osVersion), 1, length(sim$firePolys))
@@ -210,7 +214,7 @@ Init <- function(sim) {
                               omitArgs = "cores")
 
   # Post buffering, new issues --> must make sure points and buffers match
-  sim$firePoints <- Cache(harmonizeBufferAndPoints, cent = sim$firePoints,
+  sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints, cent = sim$spreadFirePoints,
                           buff = fireBufferedListDT,
                           ras = sim$flammableRTM,
                           idCol = "FIRE_ID", #this is different from default
