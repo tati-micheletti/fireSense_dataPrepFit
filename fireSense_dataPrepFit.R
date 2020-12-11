@@ -155,7 +155,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
     },
     prepIgnitionFitData = {
-      #fill as needed
+      sim <- prepare_IgnitionFit(sim)
     },
     prepEscapeFitData = {
       #fill as needed
@@ -457,8 +457,74 @@ prepare_SpreadFit <- function(sim) {
 
 prepare_IgnitionFit <- function(sim) {
   browser()
-  #need to aggregate raster, after first coaxing out the biomass fuel classes.
-  #make 4 rasters, 1 of each LCC. Add to biomass fuel classes. Then just aggregate?
+  #first put landcover into raster stack - it will be aggregated
+  LCCs <- lapply(names(sim$nonForestedLCCGroups),
+                 FUN = function(lcc,
+                                landcoverDT = sim$landcoverDT,
+                                templateRas = sim$rasterToMatch) {
+                   lccRas <- raster(templateRas)
+                   lccRas[landcoverDT$pixelID] <- landcoverDT[, get(lcc)]
+                   return(lccRas)
+                 }) %>%
+    stack(.) %>%
+    raster::aggregate(., fact = 25, fun = mean)
+  names(LCCs) <- names(sim$nonForestedLCCGroups)
+
+  # browser()
+  fuelClasses <- Map(f = classifyCohortsFireSenseSpread,
+                     cohortData = list(sim$cohortData2001, sim$cohortData2011),
+                     yearCohort = list(2001, 2011),
+                     pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
+                     MoreArgs = list(flammableMap = sim$flammableRTM,
+                                     sppEquiv = sim$sppEquiv,
+                                     sppEquivCol = P(sim)$sppEquivCol)) %>%
+    lapply(., FUN = raster::brick) %>%
+    lapply(., FUN = raster::aggregate, fact = 25, fun = mean)
+  names(fuelClasses) <- c('year2001', 'year2011')
+
+  #I don't think terrain should be used in ignition - confirm with friends
+
+  #Next aggregate fire data? for each year? Then get climate values. mix and match. done.
+  climate <- lapply(sim$historicalClimateRasters, FUN = aggregate, fact = 25, fun = mean)
+  #now we want a table with the climate values of each firePoint at each year
+  if (length(climate) > 1) {
+    stop("need to fix ignition for multiple climate variables. contact module developers")
+  } else {
+    climate <- raster::stack(climate[[1]])
+    Missing <- !names(climate) %in% names(sim$ignitionFirePoints)
+    if (any(Missing)) {
+      climate <- dropLayer(x = climate, i = Missing)
+    } #there is almost no chance of a year having no ignitions --- but you never know
+    rm(Missing)
+  }
+
+  cellIndices <- setValues(sim$rasterToMatch, 1:ncell(sim$rasterToMatch)) %>%
+    lapply(sim$ignitionFirePoints, FUN = raster::extract, x = .)
+
+  ignitionDT <- Map(f = raster::extract,
+                    x = unstack(climate),
+                    y = sim$ignitionFirePoints,
+                    MoreArgs = list(cellnumbers = TRUE))
+  ignitionDT <- lapply(ignitionDT, FUN = function(x) {
+    x <- as.data.table(x)
+    colnames(x) <- c("pixelID", "MDC")
+    x[, fires := .N, .(pixelID)]
+    return(x)
+  })
+
+  names(ignitionDT) <- names(sim$ignitionFirePoints)
+
+
+  pre2005 <- paste0('year', min(P(sim)$fireYears):2005)
+  pre2005Indices <- names(sim$ignitionFirePoints)[names(sim$ignitionFirePoints) %in% pre2005]
+  post2005Indices <- names(sim$ignitionFirePoints)[!names(sim$ignitionFirePoints) %in% pre2005]
+
+  temp <- stack(fuelClasses$year2001, LCCs)
+  pre2005 <- lapply(sim$ignitionFirePoints, FUN = raster::extract,
+                    x = stack(fuelClasses$year2001, LCCs),
+                    cellnumbers = TRUE)
+  pre2005
+
   #Then define formula
 }
 
@@ -511,59 +577,59 @@ plotFun <- function(sim) {
                            userTags = c('firePolys', paste0("years:", range(P(sim)$fireYears))))
   }
 
-  if (isTRUE(P(sim)$useCentroids)) {
-    if (!suppliedElsewhere("firePoints", sim)) {
-      message("... preparing polyCentroids")
+  if (!suppliedElsewhere("spreadFirePoints", sim)) {
+    message("... preparing polyCentroids")
 
-      centerFun <- function(x) {
-        if (is.null(x)) {
-          return(NULL)
-        } else {
-          ras <- x
-          ras$ID <- 1:NROW(ras)
-          centCoords <- rgeos::gCentroid(ras, byid = TRUE)
-          cent <- SpatialPointsDataFrame(centCoords,
-                                         as.data.frame(ras))
-          return(cent)
-        }
+    centerFun <- function(x) {
+      if (is.null(x)) {
+        return(NULL)
+      } else {
+        ras <- x
+        ras$ID <- 1:NROW(ras)
+        centCoords <- rgeos::gCentroid(ras, byid = TRUE)
+        cent <- SpatialPointsDataFrame(centCoords,
+                                       as.data.frame(ras))
+        return(cent)
       }
-      mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
-      clObj <- parallel::makeCluster(type = 'SOCK', mc)
-      a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
-      clusterExport(cl = clObj, list('firePolys'), envir = sim)
-      sim$firePoints <- Cache(FUN = parallel::clusterApply,
-                              x = sim$firePolys,
-                              cl = clObj,
-                              fun = centerFun, #don't specify FUN argument or Cache will mistake it.
-                              userTags = c(currentModule(sim), 'firePoints'),
-                              omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
-      stopCluster(clObj)
-      names(sim$firePoints) <- names(sim$firePolys)
     }
-  } else {
-    if (!suppliedElsewhere("firePoints", sim)) {
-      sim$firePoints <- Cache(getFirePoints_NFDB,
-                              url = "http://cwfis.cfs.nrcan.gc.ca/downloads/nfdb/fire_pnt/current_version/NFDB_point.zip",
-                              studyArea = sim$studyArea,
-                              rasterToMatch = sim$rasterToMatch,
-                              NFDB_pointPath = file.path(Paths$inputPath, "NFDB_point"),
-                              years = P(sim)$fireYears,
-                              userTags = c("what:firePoints", "forWhat:fireSense_SpreadFit"))
-      crs(sim$firePoints) <- crs(sim$rasterToMatch)
-      names(sim$firePoints) <- names(sim$firePolys)
-    }
+    mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
+    clObj <- parallel::makeCluster(type = 'SOCK', mc)
+    a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
+    clusterExport(cl = clObj, list('firePolys'), envir = sim)
+    sim$spreadFirePoints <- Cache(FUN = parallel::clusterApply,
+                                  x = sim$firePolys,
+                                  cl = clObj,
+                                  fun = centerFun, #don't specify FUN argument or Cache will mistake it.
+                                  userTags = c(currentModule(sim), 'spreadFirePoints'),
+                                  omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
+    stopCluster(clObj)
+    names(sim$spreadFirePoints) <- names(sim$firePolys)
   }
 
-  if (all(!is.null(sim$firePoints), !is.null(sim$firePolys))) { #may be NULL if passed by objects - add to Init?
+  if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
+  #may be NULL if passed by objects - add to Init?
   #this is necessary because centroids may be fewer than fires if fire polys were small
-    min1Fire <- lapply(sim$firePoints, length) > 0
-    sim$firePoints <- sim$firePoints[min1Fire]
+    min1Fire <- lapply(sim$spreadFirePoints, length) > 0
+    sim$spreadFirePoints <- sim$spreadFirePoints[min1Fire]
     sim$firePolys <- sim$firePolys[min1Fire]
   }
-  if (length(sim$firePolys) != length(sim$firePoints)) {
+  if (length(sim$firePolys) != length(sim$spreadFirePoints)) {
     stop("mismatched years between firePolys and firePoints")
     #need to implement a better approach that matches each year's IDS
+    #these are mostly edge cases if a user passes only one of spreadFirePoints/firePolys
   }
+
+  if (!suppliedElsewhere("ignitionFirePoints", sim)) {
+    sim$ignitionFirePoints <- Cache(
+      fireSenseUtils::getFirePoints_NFDB_V2,
+      studyArea = sim$studyArea,
+      rasterToMatch = sim$rasterToMatch,
+      years = P(sim)$fireYears,
+      NFDB_pointPath = dPath,
+      userTags = c('ignitionFirePoints', P(sim)$.studyAreaName))
+    #TODO: what should we set arg redownloadIn to?
+  }
+
 
   if (!suppliedElsewhere("rstLCC", sim)) {
     sim$rstLCC <- prepInputsLCC(destinationPath = dPath,
