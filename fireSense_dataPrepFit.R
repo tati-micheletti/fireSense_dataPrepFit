@@ -104,6 +104,8 @@ defineModule(sim, list(
                   desc = 'list of spatialPolygonDataFrame objects representing annual fires'),
     createsOutput(objectName = 'fireSense_annualSpreadFitCovariates', objectClass = 'list',
                   desc = 'list of tables with climate PCA components, burn status, polyID, and pixelID'),
+    createsOutput(objectName = 'fireSense_ignitionCovariates', objectClass = 'data.table',
+                  desc = 'table of aggregated ignition covariates with annual ignitions'),
     createsOutput(objectName = 'fireSense_spreadFormula', objectClass = 'formula',
                   desc = 'formula for spread, using climate and terrain components'),
     createsOutput(objectName = 'fireSense_ignitionFormula', objectClass = 'formula',
@@ -456,21 +458,24 @@ prepare_SpreadFit <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
-  browser()
+
   #first put landcover into raster stack - it will be aggregated
-  LCCs <- lapply(names(sim$nonForestedLCCGroups),
-                 FUN = function(lcc,
-                                landcoverDT = sim$landcoverDT,
-                                templateRas = sim$rasterToMatch) {
-                   lccRas <- raster(templateRas)
-                   lccRas[landcoverDT$pixelID] <- landcoverDT[, get(lcc)]
-                   return(lccRas)
-                 }) %>%
+  putBackIntoRaster <- function(lcc, landcoverDT, templateRas) {
+    lccRas <- raster(templateRas)
+    lccRas[landcoverDT$pixelID] <- landcoverDT[, get(lcc)]
+    return(lccRas)
+  }
+
+  LCCs <- Cache(lapply,
+                names(sim$nonForestedLCCGroups),
+                putBackIntoRaster,
+                landcoverDT = sim$landcoverDT,
+                templateRas = sim$rasterToMatch,
+                userTags = c("putBackIntoRaster"))  %>%
     stack(.) %>%
     raster::aggregate(., fact = 25, fun = mean)
   names(LCCs) <- names(sim$nonForestedLCCGroups)
 
-  # browser()
   fuelClasses <- Map(f = classifyCohortsFireSenseSpread,
                      cohortData = list(sim$cohortData2001, sim$cohortData2011),
                      yearCohort = list(2001, 2011),
@@ -482,50 +487,41 @@ prepare_IgnitionFit <- function(sim) {
     lapply(., FUN = raster::aggregate, fact = 25, fun = mean)
   names(fuelClasses) <- c('year2001', 'year2011')
 
-  #I don't think terrain should be used in ignition - confirm with friends
-
   #Next aggregate fire data? for each year? Then get climate values. mix and match. done.
-  climate <- lapply(sim$historicalClimateRasters, FUN = aggregate, fact = 25, fun = mean)
+  climate <- Cache(lapply,
+                   sim$historicalClimateRasters,
+                   raster::aggregate,
+                   fact = 25,
+                   fun = mean,
+                   userTags = c('climate', 'aggregate'))
   #now we want a table with the climate values of each firePoint at each year
   if (length(climate) > 1) {
     stop("need to fix ignition for multiple climate variables. contact module developers")
+    #for now - will fix later
   } else {
     climate <- raster::stack(climate[[1]])
-    Missing <- !names(climate) %in% names(sim$ignitionFirePoints)
-    if (any(Missing)) {
-      climate <- dropLayer(x = climate, i = Missing)
-    } #there is almost no chance of a year having no ignitions --- but you never know
-    rm(Missing)
   }
 
-  cellIndices <- setValues(sim$rasterToMatch, 1:ncell(sim$rasterToMatch)) %>%
-    lapply(sim$ignitionFirePoints, FUN = raster::extract, x = .)
+   pre2005 <- paste0('year', min(P(sim)$fireYears):2005)
+   post2005 <- paste0('year', 2006:max(P(sim)$fireYears))
 
-  ignitionDT <- Map(f = raster::extract,
-                    x = unstack(climate),
-                    y = sim$ignitionFirePoints,
-                    MoreArgs = list(cellnumbers = TRUE))
-  ignitionDT <- lapply(ignitionDT, FUN = function(x) {
-    x <- as.data.table(x)
-    colnames(x) <- c("pixelID", "MDC")
-    x[, fires := .N, .(pixelID)]
-    return(x)
-  })
+   sim$fireSense_ignitionCovariates <- Map(f = stackAndExtract,
+                     years = list(pre2005, post2005),
+                     fuel = list(fuelClasses$year2001, fuelClasses$year2011),
+                     MoreArgs = list(LCC = LCCs,
+                                      fires = sim$ignitionFirePoints,
+                                      climate = climate,
+                                      climVar = names(sim$historicalClimateRasters))) %>%
+   rbindlist(.)
+   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
+   RHS <- names(sim$fireSense_ignitionCovariates) %>%
+     .[!. %in% c("cells", "nFires", names(sim$historicalClimateRasters))] %>%
+     paste0(., ':', names(sim$historicalClimateRasters)) %>%
+     paste(., collapse = ' + ')
+   #review formula
+   sim$fireSense_ignitionFormula <- as.formula(paste('nFires ~0 + ', paste(RHS)))
 
-  names(ignitionDT) <- names(sim$ignitionFirePoints)
-
-
-  pre2005 <- paste0('year', min(P(sim)$fireYears):2005)
-  pre2005Indices <- names(sim$ignitionFirePoints)[names(sim$ignitionFirePoints) %in% pre2005]
-  post2005Indices <- names(sim$ignitionFirePoints)[!names(sim$ignitionFirePoints) %in% pre2005]
-
-  temp <- stack(fuelClasses$year2001, LCCs)
-  pre2005 <- lapply(sim$ignitionFirePoints, FUN = raster::extract,
-                    x = stack(fuelClasses$year2001, LCCs),
-                    cellnumbers = TRUE)
-  pre2005
-
-  #Then define formula
+  return(sim)
 }
 
 ### template for save events
@@ -664,10 +660,9 @@ plotFun <- function(sim) {
 
   if (!suppliedElsewhere('nonForestedLCCGroups', sim)) {
     sim$nonForestedLCCGroups <- list(
-      'shrubland' = c(16, 22),
-      'wetland' = c(19, 23),
-      'cropland' = c(26, 27, 28, 29),
-      'grassland' = c(17, 18, 21, 24) ## TODO: what about 30?
+      'nonForest_highFlam' = c(16, 17, 18, 19, 22),
+      'nonForest_lowFlam' = c(21, 23, 24, 26, 27, 28, 29)
+         ## TODO: what about 30?
     )
   }
 
