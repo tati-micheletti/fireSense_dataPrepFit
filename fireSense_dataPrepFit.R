@@ -38,7 +38,7 @@ defineModule(sim, list(
     defineParameter(name = "fireYears", class = "integer", default = 1991:2017,
                     desc = "A numeric vector indicating which years should be extracted
                     from the fire databases to use for fitting"),
-    defineParameter(name = 'forestedLCC', class = 'numeric', default = c(1:15, 20, 34, 35), NA, NA,
+    defineParameter(name = 'forestedLCC', class = 'numeric', default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0('forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.',
                                   'These classes will be excluded from the PCA')),
     defineParameter(name = 'nonflammableLCC', class = 'numeric', c(0, 25, 30, 33, 36, 37, 38, 39), NA, NA,
@@ -79,10 +79,6 @@ defineModule(sim, list(
                  desc = paste("a named list of non-forested landcover groups",
                               "e.g. list('wetland' = c(19, 23, 32))",
                               'These will become covariates in fireSense_IgnitionFit')),
-    expectsInput(objectName = "nonForest_timeSinceDisturbance", objectClass = "RasterStack", sourceURL = NA,
-                 desc = paste("Two rasters - one is time since disturbance represented annually,",
-                              "the other is a binary form using age < 15 as threshold.",
-                              "Used to track time since fire for non-forest pixels")),
     expectsInput(objectName = "pixelGroupMap2001", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "RasterLayer that defines the pixelGroups for cohortData table in 2001"),
     expectsInput(objectName = "pixelGroupMap2011", objectClass = "RasterLayer",
@@ -129,6 +125,8 @@ defineModule(sim, list(
                   desc = 'PCA model for climate covariates, needed for fireSensePredict'),
     createsOutput(objectName = 'PCAveg', objectClass = 'prcomp',
                   desc = 'PCA model for veg and LCC covariates, needed for FS models'),
+    createsOutput(objectName = "nonForest_timeSinceDisturbance", objectClass = "RasterLayer",
+                 desc = "time since burn for non-forested pixels"),
     createsOutput(objectName = 'vegComponentsToUse', 'character',
                   desc = 'names of the veg components to use in ignition, escape, and spread predict models'),
     createsOutput(objectName = 'spreadFirePoints', objectClass = 'list',
@@ -666,41 +664,11 @@ plotFun <- function(sim) {
   if (!suppliedElsewhere('nonForestedLCCGroups', sim)) {
     sim$nonForestedLCCGroups <- list(
       'nonForest_highFlam' = c(16, 17, 18, 19, 22),
-      'nonForest_lowFlam' = c(21, 23, 24, 26, 27, 28, 29)
+      'nonForest_lowFlam' = c(21, 23, 24, 26, 27, 28, 29, 31)
+      #0, 25, 30, 33, 36, 37, 38, 39 non flammable
+      # 1:15, 20, 32, 34, 35 forest
+
     )
-  }
-
-  if (!suppliedElsewhere("nonForest_timeSinceDisturbance")) {
-    #create template of non-forest flammable
-    browser()
-    nonForestFlm <- sim$flammableRTM
-    Flam <- getValues(nonForestFlm)
-    Flam[!is.na(sim$pixelGroupMap2001)] <- NA #don't track forest
-    Flam[!is.na(Flam) & Flam == 0] <- NA #don't track non-flammable
-    nonForestFlm <- setValues(nonForestFlm, Flm)
-
-    #get 15 prior years of fire to initialize
-    earlierFires <- fireSenseUtils::getFirePolygons(years = c(min(P(sim)$fireYears - 15):min(P(sim)$fireYears) - 1),
-                                                    studyArea = sim$studyArea,
-                                                    destinationPath = dPath,
-                                                    useInnerCache = FALSE) %>%
-      rbindlist(.)
-    #need a single sf object
-    earlierFires$timeToAdjust <- min(P(sim)$fireYears) - earlierFires$YEAR
-    #a fire in 1976 will = 15, 1990 = 1.
-    pixelsToAdjust <- fasterize::fasterize(sf = earlierFires,
-                                           field = 'timeToAdjust',
-                                           raster = nonForestFlm,
-                                           fun = 'min') #min = most recent fire
-    rastDT <- data.table('flam' = getValues(nonForestFlm),
-                         'adjAge' = getValues(pixesToAdjust))
-    rstDT[!is.na(flam) & is.na(adjAge), adjAge := 16] #initial age
-    rstDT[, timeClass := ifelse(!is.na(adjAge) & adjAge < 16, 0, 1)]
-    #pixels 15 years or younger since disturbance = 0
-
-    time <- setValues(nonForestFlm, rstDT$adjAge)
-    timeClass <- setValues(nonForestFlm, rstDT$timeClass)
-    sim$nonForest_timeSinceDisturbance <- stack(time, timeClass)
   }
 
   return(invisible(sim))
