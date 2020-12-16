@@ -84,9 +84,15 @@ defineModule(sim, list(
                  desc = "template raster for study area"),
     expectsInput(objectName = "rstLCC", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "Raster of land cover. Defaults to LCC05."),
-    expectsInput(objectName = "sppEquiv", objectClass = "data.table",
-                 desc = "table of species equivalencies. See LandR::sppEquivalencies_CA."),
-    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", sourceURL = NA,
+    expectsInput(objectName = 'historicalClimateRasters', objectClass = 'list', sourceURL = NA,
+                 desc = 'list of historical climate variables in raster stack form, name according to variable'),
+    expectsInput(objectName = 'rasterToMatch', objectClass = 'RasterLayer', sourceURL = NA,
+                 desc = "template raster for study area"),
+    expectsInput(objectName = 'standAgeMap2001', objectClass = 'RasterLayer', sourceURL = NA,
+                 desc = "stand age map in 2001 - must include non-forest ages"),
+    expectsInput(objectName = 'standAgeMap2011', objectClass = 'RasterLayer', sourceURL = NA,
+                 desc = "stand age map in 2011 - must include non-forest ages"),
+    expectsInput(objectName = 'studyArea', objectClass = 'SpatialPolygonsDataFrame', sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
     expectsInput(objectName = "terrainCovariates", objectClass = "RasterStack", sourceURL = NA,
                  desc = "a raster stack of terrain covariates; defaults are elev, aspect, slope, TRI, TWI")
@@ -275,18 +281,22 @@ Init <- function(sim) {
 
 
   #####do veg PCA####
+  #consider Map call to make Eliot happy
   cohorts2001 <- castCohortData(cohortData = sim$cohortData2001,
                                 pixelGroupMap = sim$pixelGroupMap2001,
+                                ageMap = sim$standAgeMap2001,
                                 lcc = sim$landcoverDT,
                                 terrainDT = sim$terrainDT)
   set(cohorts2001, NULL, 'year', 2001)
 
   cohorts2011 <- castCohortData(cohortData = sim$cohortData2011,
                                 pixelGroupMap = sim$pixelGroupMap2011,
+                                ageMap= sim$standAgeMap2011,
                                 lcc = sim$landcoverDT,
                                 terrainDT = sim$terrainDT)
   set(cohorts2011, NULL, 'year', 2011)
 
+  browser()
   vegPCAdat <- rbind(cohorts2001, cohorts2011)
   rm(cohorts2001, cohorts2011, lcc)
 
@@ -311,7 +321,7 @@ Init <- function(sim) {
   rm(vegList, vegPCAdat)
 
   components <- paste0('PC', 1:P(sim)$PCAcomponentsForVeg)
-  vegComponents <- vegComponents[, .SD, .SDcols = c(components, 'pixelID', 'year')]
+  vegComponents <- vegComponents[, .SD, .SDcols = c(components, 'pixelID', 'year', 'youngAge')]
   #rename components so climate/veg components distinguishable
   setnames(vegComponents, old = components, new = paste0("veg", components))
   rm(components)
