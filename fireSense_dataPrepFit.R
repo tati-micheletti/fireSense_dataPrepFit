@@ -30,7 +30,7 @@ defineModule(sim, list(
     defineParameter("areaMultiplier", class = "numeric", 2, NA, NA,
                     desc = paste("Either a scalar that will buffer areaMultiplier * fireSize or a function",
                     "of fireSize. Default is 2. See fireSenseUtils::bufferToArea for help")),
-    defineParameter(name = "fireYears", class = "integer", default = 1991:2017,
+    defineParameter(name = "fireYears", class = "integer", default = 2001:2019,
                     desc = "A numeric vector indicating which years should be extracted
                     from the fire databases to use for fitting"),
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
@@ -384,26 +384,26 @@ Init <- function(sim) {
   #whether there are multiple climate components or a single non-transformed variable
   sim$climateComponentsToUse <- names(climateComponents)[!names(climateComponents) %in% c("pixelID", "year")]
 
-  # get pixelIDs pre2005 and post2005
+  # get pixelIDs pre2011 and post2011
   #these will become lists of stacks
-  pre2005 <- paste0("year", min(P(sim)$fireYears):2005)
-  pre2005Indices <- fireBufferedListDT[names(fireBufferedListDT) %in% pre2005]
-  post2005Indices <- fireBufferedListDT[!names(fireBufferedListDT) %in% pre2005]
+  pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
+  pre2011Indices <- fireBufferedListDT[names(fireBufferedListDT) %in% pre2011]
+  post2011Indices <- fireBufferedListDT[!names(fireBufferedListDT) %in% pre2011]
 
-  logisticCovariatesPre2005 <- rbindlist(pre2005Indices) %>%
-    vegComponents[year < 2005][., on = c("pixelID")]
-  logisticCovariatesPre2005[is.na(year), year := 2001] #these are non-flammable indices
+  logisticCovariatesPre2011 <- rbindlist(pre2011Indices) %>%
+    vegComponents[year < 2011][., on = c("pixelID")]
+  logisticCovariatesPre2011[is.na(year), year := 2001] #these are non-flammable indices
 
-  logisticCovariatesPost2005 <- rbindlist(post2005Indices) %>%
-    vegComponents[year > 2005][., on = c("pixelID")]
-  logisticCovariatesPost2005[is.na(year), year := 2011]
+  logisticCovariatesPost2011 <- rbindlist(post2011Indices) %>%
+    vegComponents[year >= 2011][., on = c("pixelID")]
+  logisticCovariatesPost2011[is.na(year), year := 2011]
 
   #Some pixels will be NA because the polygon includes non-flammable cells
   #As long as these pixels are also NA in climate data, no issue
 
   # we want to collapse both time steps for logistic regression
   #but need to preserve structure of named lists for spreadFit
-  fireSenseVegData <- rbind(logisticCovariatesPost2005, logisticCovariatesPre2005)
+  fireSenseVegData <- rbind(logisticCovariatesPost2011, logisticCovariatesPre2011)
   # there are some NAs due to postProcess  - burned cells on border of terrain covariates
   setnames(fireSenseVegData, "buffer", "burned")
 
@@ -462,25 +462,26 @@ prepare_SpreadFit <- function(sim) {
   sim$fireSense_annualSpreadFitCovariates <- fireSense_annualSpreadFitCovariates
 
   #prepare non-annual spread fit covariates
-  pre2005 <- paste0("year", min(P(sim)$fireYears):2005)[yearsWithFire]
-  pre2005Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2005]
-  post2005Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2005]
+  pre2011 <- paste0("year", min(P(sim)$fireYears):2010)[yearsWithFire]
+  pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
+  post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
   colsToExtract <- c("pixelID", "youngAge", sim$vegComponentsToUse)
-  annualPre2005 <- mod$fireSenseVegData[year < 2005, .SD, .SDcols = colsToExtract] %>%
+  annualPre2011 <- mod$fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
     na.omit(.) %>%
     as.data.table(.)
-  annualPost2005 <- mod$fireSenseVegData[year > 2005, .SD, .SDcols = colsToExtract] %>%
+  annualPost2011 <- mod$fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
     na.omit(.) %>%
     as.data.table(.)
-  sim$fireSense_nonAnnualSpreadFitCovariates <- list(annualPre2005, annualPost2005)
+  sim$fireSense_nonAnnualSpreadFitCovariates <- list(annualPre2011, annualPost2011)
 
-  names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2005Indices), collapse = "_"),
-                                                         paste(names(post2005Indices), collapse = "_"))
+  names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
+                                                         paste(names(post2011Indices), collapse = "_"))
 
   return(invisible(sim))
 }
 
 prepare_IgnitionFit <- function(sim) {
+  browser()
   #first put landcover into raster stack - it will be aggregated
   putBackIntoRaster <- function(lcc, landcoverDT, templateRas) {
     lccRas <- raster(templateRas)
@@ -523,9 +524,10 @@ prepare_IgnitionFit <- function(sim) {
   } else {
     climate <- raster::stack(climate[[1]])
   }
-
-   pre2005 <- paste0("year", min(P(sim)$fireYears):2005)
-   post2005 <- paste0("year", 2006:max(P(sim)$fireYears))
+   #ignition won't have same years as spread so we do not use names of init objects
+   #The reason is some years may have no significant fires, e.g. 2001 in RIA
+   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
+   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
    sim$fireSense_ignitionCovariates <- Map(f = stackAndExtract,
                      years = list(pre2005, post2005),
