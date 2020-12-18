@@ -221,10 +221,10 @@ Init <- function(sim) {
 
   # Post buffering, new issues --> must make sure points and buffers match
   sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints, cent = sim$spreadFirePoints,
-                          buff = fireBufferedListDT,
-                          ras = sim$flammableRTM,
-                          idCol = "FIRE_ID", #this is different from default
-                          userTags = c("harmonizeBufferAndPoints"))
+                                buff = fireBufferedListDT,
+                                ras = sim$flammableRTM,
+                                idCol = "FIRE_ID", #this is different from default
+                                userTags = c("harmonizeBufferAndPoints"))
 
   ####prep terrain for PCA####
   terrainDT <- lapply(names(sim$terrainCovariates), FUN = function(x){
@@ -357,7 +357,7 @@ Init <- function(sim) {
     rm(components, climatePCA)
   } else {
     #if there is only one climate variable, no PCA
-    climateComponents <-  climatePCAdat[[1]]
+    climateComponents <- climatePCAdat[[1]]
     setDT(climateComponents)
     climCol <- names(climateComponents)[!colnames(climateComponents) %in% c("pixelID", "year")]
     #scale climCol to have unit variance and mean center
@@ -369,7 +369,6 @@ Init <- function(sim) {
   #this is to construct the formula,
   #whether there are multiple climate components or a single non-transformed variable
   sim$climateComponentsToUse <- names(climateComponents)[!names(climateComponents) %in% c("pixelID", "year")]
-
 
   # get pixelIDs pre2005 and post2005
   #these will become lists of stacks
@@ -466,7 +465,6 @@ prepare_SpreadFit <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
-
   #first put landcover into raster stack - it will be aggregated
   putBackIntoRaster <- function(lcc, landcoverDT, templateRas) {
     lccRas <- raster(templateRas)
@@ -634,7 +632,6 @@ plotFun <- function(sim) {
     #TODO: what should we set arg redownloadIn to?
   }
 
-
   if (!suppliedElsewhere("rstLCC", sim)) {
     sim$rstLCC <- prepInputsLCC(destinationPath = dPath,
                                 studyArea = sim$studyArea,
@@ -678,5 +675,3 @@ plotFun <- function(sim) {
 
   return(invisible(sim))
 }
-
-### add additional events as needed by copy/pasting from above
