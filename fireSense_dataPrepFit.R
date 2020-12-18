@@ -147,6 +147,12 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       ### check for more detailed object dependencies:
       ### (use `checkObject` or similar)
 
+      if (!all(P(sim)$whichModulesToPrepare %in% c("fireSense_SpreadFit",
+                                                   "fireSense_IgnitionFit",
+                                                   "fireSense_EscapeFit"))){
+        stop("unrecognized module to prepare - review parameter whichModulesToPrepare")
+        #the camelcase is still different with FS from LandR Biomass
+      }
       # do stuff for this event
       sim <- Init(sim)
 
@@ -530,7 +536,7 @@ prepare_IgnitionFit <- function(sim) {
    post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
    sim$fireSense_ignitionCovariates <- Map(f = stackAndExtract,
-                     years = list(pre2005, post2005),
+                     years = list(pre2011, post2011),
                      fuel = list(fuelClasses$year2001, fuelClasses$year2011),
                      MoreArgs = list(LCC = LCCs,
                                       fires = sim$ignitionFirePoints,
