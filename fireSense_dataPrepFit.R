@@ -91,7 +91,9 @@ defineModule(sim, list(
                  desc = "template raster for study area"),
     expectsInput(objectName = "rstLCC", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "Raster of land cover. Defaults to LCC05."),
-    expectsInput(objectName = 'studyArea', objectClass = 'SpatialPolygonsDataFrame', sourceURL = NA,
+    expectsInput(objectName = "sppEquiv", objectClass = "data.table", sourceURL = NA,
+                 desc = "table of LandR species equivalencies"),
+    expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
     expectsInput(objectName = "terrainCovariates", objectClass = "RasterStack", sourceURL = NA,
                  desc = "a raster stack of terrain covariates; defaults are elev, aspect, slope, TRI, TWI")
@@ -163,6 +165,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData")
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
+
 
     },
     prepIgnitionFitData = {
