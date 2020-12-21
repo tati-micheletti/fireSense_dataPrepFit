@@ -492,7 +492,7 @@ prepare_SpreadFit <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
-  browser()
+
   #first put landcover into raster stack - it will be aggregated
   putBackIntoRaster <- function(lcc, landcoverDT, templateRas) {
     lccRas <- raster(templateRas)
