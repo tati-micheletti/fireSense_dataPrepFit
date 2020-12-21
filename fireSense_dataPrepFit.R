@@ -431,7 +431,8 @@ Init <- function(sim) {
 
   mod$fireSenseVegData <- fireSenseVegData
   mod$climateComponents <- climateComponents #needed by prep spread
-  sim$fireSense_spreadFormula <- as.formula(paste("~0 + ", paste(RHS)))
+  #sim$fireSense_spreadFormula <- as.formula(paste("~0 + ", paste(RHS)))
+  sim$fireSense_spreadFormula <- paste("~0 + ", paste(RHS))
   sim$fireBufferedListDT <- fireBufferedListDT #needed by DEOptim
 
   return(invisible(sim))
@@ -477,6 +478,7 @@ prepare_SpreadFit <- function(sim) {
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
                                                          paste(names(post2011Indices), collapse = "_"))
 
+  mod$climateComponents <- NULL # remove for memory sake
   return(invisible(sim))
 }
 
@@ -623,8 +625,7 @@ plotFun <- function(sim) {
 
 
   if (!suppliedElsewhere("spreadFirePoints", sim)) {
-    message("... preparing polyCentroids")
-
+    message("... preparing polyCentroids; starting up parallel R threads")
     centerFun <- function(x) {
       if (is.null(x)) {
         return(NULL)
@@ -637,6 +638,7 @@ plotFun <- function(sim) {
         return(cent)
       }
     }
+    # suppress any startup messages
     mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
     clObj <- parallel::makeCluster(type = "SOCK", mc)
     a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
