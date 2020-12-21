@@ -65,7 +65,7 @@ defineModule(sim, list(
                  desc = paste0("Table that defines the cohorts by pixelGroup in 2001")),
     expectsInput(objectName = "cohortData2011", objectClass = "data.table", sourceURL = NA,
                  desc = paste0("Table that defines the cohorts by pixelGroup in 2011")),
-    expectsInput(objectName = "firePoints", objectClass = "list", sourceURL = NA,
+    expectsInput(objectName = "spreadFirePoints", objectClass = "list", sourceURL = NA,
                  desc = paste0("list of spatialPointsDataFrame for each fire year",
                                "with each point denoting an ignition location")),
     expectsInput(objectName = "firePolys", objectClass = "list", sourceURL = NA,
@@ -77,6 +77,9 @@ defineModule(sim, list(
                  desc = "RTM without ice/rocks/urban/water. Flammable map with 0 and 1."),
     expectsInput(objectName = "historicalClimateRasters", objectClass = "list", sourceURL = NA,
                  desc = "list of historical climate variables in raster stack form, name according to variable"),
+    expectsInput(objectName = "ignitionFirePoints", objectClass = "list", sourceURL = NA,
+                  desc = paste("list of spatialPolygonDataFrame objects representing annual ignition locations.",
+                               "This includes all fires regardless of size")),
     expectsInput(objectName = "nonForestedLCCGroups", objectClass = "list",
                  desc = paste("a named list of non-forested landcover groups",
                               "e.g. list('wetland' = c(19, 23, 32))",
@@ -109,17 +112,14 @@ defineModule(sim, list(
                   desc = "list of tables with climate PCA components, burn status, polyID, and pixelID"),
     createsOutput(objectName = "fireSense_ignitionCovariates", objectClass = "data.table",
                   desc = "table of aggregated ignition covariates with annual ignitions"),
-    createsOutput(objectName = "fireSense_ignitionFormula", objectClass = "formula",
-                  desc = "formula for ignition, using fuel classes and landcover"),
+    createsOutput(objectName = "fireSense_ignitionFormula", objectClass = "character",
+                  desc = "formula for ignition, using fuel classes and landcover, as character"),
     createsOutput(objectName = "fireSense_nonAnnualSpreadFitCovariates", objectClass = "list",
                   desc = "list of two tables with veg PCA components, burn status, polyID, and pixelID"),
-    createsOutput(objectName = "fireSense_spreadFormula", objectClass = "formula",
-                  desc = "formula for spread, using climate and terrain components"),
+    createsOutput(objectName = "fireSense_spreadFormula", objectClass = "character",
+                  desc = "formula for spread, using climate and terrain components, as character"),
     createsOutput(objectName = "fireSense_spreadLogitModel", objectClass = "glm",
                   desc = "GLM with burn as dependent variable and PCA components as covariates"),
-    createsOutput(objectName = "ignitionFirePoints", objectClass = "list",
-                  desc = paste("list of spatialPolygonDataFrame objects representing annual ignition locations.",
-                               "This includes all fires regardless of size")),
     createsOutput(objectName = "landcoverDT", "data.table",
                   desc = paste("data.table with pixelID and relevant landcover classes",
                                "that is used by predict functions")),
@@ -554,7 +554,7 @@ prepare_IgnitionFit <- function(sim) {
      paste0(., ":", names(sim$historicalClimateRasters)) %>%
      paste(., collapse = " + ")
    #review formula
-   sim$fireSense_ignitionFormula <- as.formula(paste("nFires ~0 + ", paste(RHS)))
+   sim$fireSense_ignitionFormula <- paste("nFires ~0 + ", paste(RHS))
 
   return(sim)
 }
@@ -601,7 +601,8 @@ plotFun <- function(sim) {
   }
 
   if (!suppliedElsewhere("firePolys", sim)) {
-    if (suppliedElsewhere("firePolysForAgeMap", sim)) { #don't want to needlessly download separate firePolys objects
+    if (suppliedElsewhere("firePolysForAgeMap", sim)) { #don't want to needlessly postProcess the same firePolys objects
+      #Maybe this should all be moved to init - Then we source years from 15 years prior to P(sim)$fireYears
       sim$firePolys <- Cache(fireSenseUtils::getFirePolygons, years = P(sim)$fireYears,
                              studyArea = sim$studyArea,
                              destinationPath = dPath,
