@@ -547,7 +547,8 @@ prepare_IgnitionFit <- function(sim) {
                                       fires = sim$ignitionFirePoints,
                                       climate = climate,
                                       climVar = names(sim$historicalClimateRasters))) %>%
-   rbindlist(.)
+   rbindlist(.) %>%
+     as.data.frame(.) #TODO: confirm this
    #Formula naming won't work with >1 climate variable, regardless a stop is upstream
    RHS <- names(sim$fireSense_ignitionCovariates) %>%
      .[!. %in% c("cells", "nFires", names(sim$historicalClimateRasters))] %>%
