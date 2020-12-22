@@ -1,0 +1,87 @@
+---
+title: "fireSense dataPrep model assessment"
+author: "Ian Eddy, Eliot McIntire, Steve Cumming, Alex Chubaty"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{run the module...}
+#This should be implemented at some point - at the moment the module does not provide 
+# the requisite input objects (mainly the cohortData/pixelGroup objects output by Biomass_borealDataPrep
+# but simDataPrep represents the simList of a completed run of fireSense_dataPrepFit
+
+```
+
+
+## R Markdown
+
+```{compare LCC and fire data}
+historicalBurns <- rbindlist(lapply(simDataPrep$fireBufferedListDT, FUN = function(x){
+  burned <- x[buffer == 1,]$pixelID
+  burnDT <- data.table(pixelID = burned)
+  return(burnDT)
+})
+)
+
+# historicalBurns <- historicalBurns[, .('burned' = .N), .(lcc)]
+studyAreaLCC <- data.table(lcc = getValues(simDataPrep$rstLCC), 
+                           pixelID = 1:ncell(simDataPrep$rstLCC)) %>%
+  na.omit(.)
+
+#get rid of burn class 34 and 35 by looking at what they were mapped as by Biomass_borealDataPrep
+burnClassPixels <- studyAreaLCC[lcc %in% c(34, 35),]$pixelID
+burnClassPGs <- data.table(pixelGroup = simDataPrep$pixelGroupMap2001[burnClassPixels], 
+                           pixelID = burnClassPixels)
+burnClassEGs <- simDataPrep$cohortData2001[pixelGroup %in% burnClassPGs$pixelGroup] %>%
+  .[burnClassPGs, on = c("pixelGroup"), allow.cartesian = TRUE] %>%
+  .[, .SD, .SDcols = c("ecoregionGroup", "pixelID")]
+burnClassEGs[, newLCC := gsub(pattern = '[[:alnum:]]*_', replacement = "", x = ecoregionGroup)]
+burnClassEGs[, newLCC := as.numeric(as.character(newLCC))]
+burnClassEGs <- burnClassEGs[!is.na(newLCC), .(pixelID, newLCC)] #TODO: investigate why some NAs exist. Likely omitted during NN replacement? 
+
+studyAreaLCC <- burnClassEGs[studyAreaLCC, on = c("pixelID")]
+studyAreaLCC[!is.na(newLCC), lcc := newLCC]
+
+#for summation 
+historicalBurns[, burned := 1]
+
+#studyAreaLCC <- na.omit(studyAreaLCC) Keep the NAs I think
+studyAreaLCC <- historicalBurns[studyAreaLCC, on = 'pixelID']
+studyAreaLCC <- studyAreaLCC[, .(totalLC = .N, burned = sum(burned, na.rm = TRUE)), .(lcc)]
+studyAreaLCC[, percentBurned := burned/totalLC * 100]
+studyAreaLCC[is.na(percentBurned), percentBurned := 0] #no fires here
+
+#we drop the recently burned class because it is resampled using NN
+#and it will stretch the y axis, as by definition most has burned
+ggplot(data = studyAreaLCC[!lcc %in% c(34, 35)], aes(x = lcc, y = percentBurned)) +
+  geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  ylab("percent burned (%)") +
+  scale_x_continuous("LCC", labels = as.character(studyAreaLCC$lcc), breaks = studyAreaLCC$lcc) +
+  theme_bw()
+```
+If the relationship between LCCs and their historical propensity to burn is similar in the study area as the rest of Canada,
+we should see more fire in forest generally (1:15, 20, 32), with broadleaf/mixed less flammable (2:5, 11:15), and in non-forest, more fire in shrubland/grassland 'high flammable non-forest' category comprising 16, 17, 18, 19, 22. There should be little to no fire in the 'low flammable non-forest' 21, 23, 24, 26, 27, 28, 29, 31, though depending on sample size this might vary. The non-flammable classes 25, 30, 33, 36, 37, 38, and 39 should have no fire.
+
+
+```{compare logistic function used to select PCA}
+plot(simDataPrep$fireSense_spreadLogitModel)
+simDataPrep$fireSense_spreadLogitModel$data[662678,]
+# outliers in residuals appear to be outliers in dataset example below
+#   vegPC1 vegPC2 vegPC3 vegPC4 vegPC5 vegPC6 vegPC7 vegPC8 vegPC9 vegPC10 pixelID year youngAge burned ids
+#1:   7333   5151  20494  -4237   1042   1691  -5441   1575  13113   19769 5214752 2001        0      1  49
+# this is the biggest outlier and it happens to have PC3 values 20 x the SD (component 3 is most sig). 
+# a PC value of 20000 = 10 x the sd (they were multiplied by 1000 and converted to integer)
+# 
+# this is unfinished - 
+
+
+```
