@@ -288,12 +288,13 @@ Init <- function(sim) {
   #save the lcc - it will be used by predict models
 
   # get nonForestAgeMaps - I do not think this needs to be assigned to sim
-  # however dataPrep_Predict will need to create a nonForestAgeMap
-  #We will count backwards from 2001, similar to how standAge is calculated. This is consistent, but imperfect
-  #since we aren't annually determining time since disturbance, there is always some space/time error
+  # there is going to be some mismatch in how youngAge is treated between fit and predict
+  # fit will use historical fires to determine young, while predict
+  # will use stand age for forest and a nonForestStandAgeMap for non-forest
+  # this may mean some functions require updating when we predict
 
 
-# cannot merge becasue the datasets have changed over the years
+# cannot merge because before subsetting due to column differences over time
   firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0], FUN = sf::st_as_sf) %>%
     lapply(., FUN = function(x){
         x <- x[, "YEAR"]
