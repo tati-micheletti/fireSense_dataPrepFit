@@ -170,7 +170,8 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
 
-     sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
+      sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
+      sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
 
     },
     prepIgnitionFitData = {
@@ -182,6 +183,11 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
     prepSpreadFitData = {
       sim <- prepare_SpreadFit(sim)
     },
+
+    plotAndMessage = {
+      sim <- plotAndMessage(sim)
+    },
+
     cleanUp = {
       sim <- cleanUpMod(sim)
     },
@@ -589,6 +595,7 @@ cleanUpMod <- function(sim){
 
   return(invisible(sim))
 }
+
 ### template for save events
 Save <- function(sim) {
   # ! ----- EDIT BELOW ----- ! #
@@ -600,12 +607,21 @@ Save <- function(sim) {
 }
 
 ### template for plot events
-plotFun <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  #Plot(sim$object)
+plotAndMessage <- function(sim) {
 
-  # ! ----- STOP EDITING ----- ! #
+  components <- as.data.table(sim$PCAveg$rotation)
+  setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
+  components[, covariate := row.names(sim$PCAveg$rotation)]
+  setcolorder(components, neworder = 'covariate')
+  componentPrintOut <- components[, .SD, .SDcol = c('covariate', sim$vegComponentsToUse)]
+
+  message("the loading of the components most correlated with fire are:")
+  print(componentPrintOut)
+
+  coefficientPrintOut <- sim$fireSense_spreadLogitModel$coefficients[sim$vegComponentsToUse]
+  message("the coefficients of these components are:")
+  print(coefficientPrintOut)
+
   return(invisible(sim))
 }
 
