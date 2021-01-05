@@ -453,8 +453,8 @@ prepare_SpreadFit <- function(sim) {
   #this is a funny way to get years but avoids years with 0 fires
   years <- paste0("year", P(sim)$fireYears)
   yearsWithFire <- years[paste0("year", P(sim)$fireYears) %in% names(sim$firePolys)]
-  pre2011 <- na.omit(paste0("year", min(P(sim)$fireYears):2010) %in% yearsWithFire)
-  post2011 <- na.omit(paste0("year", 2011:max(P(sim)$fireYears)) %in% yearsWithFire)
+  pre2011 <- yearsWithFire[yearsWithFire %in% paste0("year", min(P(sim)$fireYears):2010)]
+  post2011 <- yearsWithFire[yearsWithFire %in% paste0("year", 2011:max(P(sim)$fireYears))]
 
   #currently there are NAs in climate due to non-flammable pixels in fire buffer
   fireSense_annualSpreadFitCovariates <- lapply(years, FUN = function(x) {
@@ -493,15 +493,14 @@ prepare_SpreadFit <- function(sim) {
   TSD2011 <- makeTSD(year = 2011, firePolys = sim$firePolysForAge,
                      standAgeMap = sim$standAgeMap2011,
                      lcc = sim$landcoverDT)
- #the function will do this below, and then use the data.table with location of non-forest to fill in those ages
-
+  #the function will do this below, and then use the data.table with location of non-forest to fill in those ages
   annualCovariates <- Map(f = calcYoungAge,
                           years = list(c(2001:2010), c(2011:max(P(sim)$fireYears))),
                           annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
                                                   fireSense_annualSpreadFitCovariates[post2011]),
                           standAgeMap = list(TSD2001, TSD2011),
                           MoreArgs = list(fireBufferedListDT = sim$fireBufferedListDT)
-                          )
+  )
   sim$fireSense_annualSpreadFitCovariates <- do.call(c, annualCovariates)
 
   sim$fireSense_nonAnnualSpreadFitCovariates <- list(nonAnnualPre2011, nonAnnualPost2011)
