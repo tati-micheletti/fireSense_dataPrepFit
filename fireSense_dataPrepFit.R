@@ -56,7 +56,7 @@ defineModule(sim, list(
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
                                  "or at the ignition points in sim$firePoints?")),
-    defineParameter("whichModulesToPrepare", "character",
+    defineParameter(name = "whichModulesToPrepare", class = "character",
                     default = c("fireSense_IgnitionFit", "fireSense_IgnitionPredict", "fireSense_EscapeFit"),
                     NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
   ),
@@ -96,6 +96,10 @@ defineModule(sim, list(
                  desc = "Raster of land cover. Defaults to LCC05."),
     expectsInput(objectName = "sppEquiv", objectClass = "data.table", sourceURL = NA,
                  desc = "table of LandR species equivalencies"),
+    expectsInput(objectName = 'standAgeMap2001', objectClass = "RasterLayer", sourceURL = NA,
+                 desc = "map of stand age in 2001 used to create cohortData2001"),
+    expectsInput(objectName = 'standAgeMap2011', objectClass = "RasterLayer", sourceURL = NA,
+                 desc = "map of stand age in 2011 used to create cohortData2011"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
     expectsInput(objectName = "terrainCovariates", objectClass = "RasterStack", sourceURL = NA,
@@ -166,6 +170,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
 
+     sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
 
     },
     prepIgnitionFitData = {
@@ -176,6 +181,9 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
     },
     prepSpreadFitData = {
       sim <- prepare_SpreadFit(sim)
+    },
+    cleanUp = {
+      sim <- cleanUpMod(sim)
     },
     warning(paste("Undefined event type: \"", current(sim)[1, "eventType", with = FALSE],
                   "\' in module \'", current(sim)[1, "moduleName", with = FALSE], "\'", sep = ""))
@@ -287,42 +295,32 @@ Init <- function(sim) {
   sim$landcoverDT <- lcc
   #save the lcc - it will be used by predict models
 
-  # get nonForestAgeMaps - I do not think this needs to be assigned to sim
-  # there is going to be some mismatch in how youngAge is treated between fit and predict
-  # fit will use historical fires to determine young, while predict
-  # will use stand age for forest and a nonForestStandAgeMap for non-forest
-  # this may mean some functions require updating when we predict
-
-
 # cannot merge because before subsetting due to column differences over time
-  firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0], FUN = sf::st_as_sf) %>%
+
+  mod$firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0], FUN = sf::st_as_sf) %>%
     lapply(., FUN = function(x){
         x <- x[, "YEAR"]
       }) %>%
     do.call(rbind, .)
 
-  cohorts2001 <- cohortsToCovariates(cohortData = sim$cohortData2001,
-                                     pixelGroupMap = sim$pixelGroupMap2001,
-                                     lcc = sim$landcoverDT,
-                                     terrainDT = sim$terrainDT,
-                                     firePolysForAge = firePolysForAge,
-                                     missingLCC = P(sim)$missingLCCgroup,
-                                     rasterToMatch = sim$rasterToMatch,
-                                     fireYears = c(1986, 2000))
-  set(cohorts2001, NULL, "year", 2001)
+  cohorts2001 <-  castCohortData(cohortData = sim$cohortData2001,
+                                 pixelGroupMap = sim$pixelGroupMap2001,
+                                 year = 2001,
+                                 ageMap = NULL,
+                                 lcc = sim$landcoverDT,
+                                 terrainDT = sim$terrainDT,
+                                 missingLCC = P(sim)$missingLCC)
 
-  cohorts2011 <- cohortsToCovariates(cohortData = sim$cohortData2011,
-                                     pixelGroupMap = sim$pixelGroupMap2011,
-                                     lcc = sim$landcoverDT,
-                                     terrainDT = sim$terrainDT,
-                                     firePolysForAge = firePolysForAge,
-                                     missingLCC = P(sim)$missingLCCgroup,
-                                     rasterToMatch = sim$rasterToMatch,
-                                     fireYears = c(1996, 2010))
-
-  set(cohorts2011, NULL, "year", 2011)
+  cohorts2011 <-  castCohortData(cohortData = sim$cohortData2011,
+                                 pixelGroupMap = sim$pixelGroupMap2011,
+                                 year = 2011,
+                                 ageMap = NULL,
+                                 lcc = sim$landcoverDT,
+                                 terrainDT = sim$terrainDT,
+                                 missingLCC = P(sim)$missingLCC)
 
   vegPCAdat <- rbind(cohorts2001, cohorts2011)
+
   rm(cohorts2001, cohorts2011, lcc)
 
   #Clean up missing pixels - this is a temporary fix
@@ -454,11 +452,12 @@ prepare_SpreadFit <- function(sim) {
   #Prepare annual spread fit covariates
   #this is a funny way to get years but avoids years with 0 fires
   years <- paste0("year", P(sim)$fireYears)
-  yearsWithFire <- paste0("year", P(sim)$fireYears) %in% names(sim$firePolys)
-  years <- c(years)[yearsWithFire]
+  yearsWithFire <- years[paste0("year", P(sim)$fireYears) %in% names(sim$firePolys)]
+  pre2011 <- na.omit(paste0("year", min(P(sim)$fireYears):2010) %in% yearsWithFire)
+  post2011 <- na.omit(paste0("year", 2011:max(P(sim)$fireYears)) %in% yearsWithFire)
 
   #currently there are NAs in climate due to non-flammable pixels in fire buffer
-  fireSense_annualSpreadFitCovariates <- lapply(years, FUN = function(x){
+  fireSense_annualSpreadFitCovariates <- lapply(years, FUN = function(x) {
     thisYear <- mod$climateComponents[year == x,]
     thisYear <- thisYear[, .SD, .SDcols = -c("year")]
     annualFireSenseDT <- sim$fireBufferedListDT[[x]]
@@ -469,26 +468,46 @@ prepare_SpreadFit <- function(sim) {
     return(thisYear)
   })
   names(fireSense_annualSpreadFitCovariates) <- years
-  #annualSpreadFitCovariates needs to only include pixelIDs in fireBufferDT
-  sim$fireSense_annualSpreadFitCovariates <- fireSense_annualSpreadFitCovariates
+
 
   #prepare non-annual spread fit covariates
-  pre2011 <- paste0("year", min(P(sim)$fireYears):2010)[yearsWithFire]
   pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
   post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
   colsToExtract <- c("pixelID", "youngAge", sim$vegComponentsToUse)
-  annualPre2011 <- mod$fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
-    na.omit(.) %>%
-    as.data.table(.)
-  annualPost2011 <- mod$fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
-    na.omit(.) %>%
-    as.data.table(.)
-  sim$fireSense_nonAnnualSpreadFitCovariates <- list(annualPre2011, annualPost2011)
 
+  #remove age from the annual covariates - it will come from TSD
+  nonAnnualPre2011 <- mod$fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
+    na.omit(.) %>%
+    as.data.table(.) %>%
+    .[, youngAge := NULL]
+  nonAnnualPost2011 <- mod$fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
+    na.omit(.) %>%
+    as.data.table(.) %>%
+    .[, youngAge := NULL]
+
+
+  #Create one universal TSD map for each initial time period combining stand age/ time since burn
+  TSD2001 <- makeTSD(year = 2001, firePolys = sim$firePolysForAge,
+                     standAgeMap = sim$standAgeMap2001,
+                     lcc = sim$landcoverDT)
+  TSD2011 <- makeTSD(year = 2011, firePolys = sim$firePolysForAge,
+                     standAgeMap = sim$standAgeMap2011,
+                     lcc = sim$landcoverDT)
+ #the function will do this below, and then use the data.table with location of non-forest to fill in those ages
+
+  annualCovariates <- Map(f = calcYoungAge,
+                          years = list(c(2001:2010), c(2011:max(P(sim)$fireYears))),
+                          annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
+                                                  fireSense_annualSpreadFitCovariates[post2011]),
+                          standAgeMap = list(TSD2001, TSD2011),
+                          MoreArgs = list(fireBufferedListDT = sim$fireBufferedListDT)
+                          )
+  sim$fireSense_annualSpreadFitCovariates <- do.call(c, annualCovariates)
+
+  sim$fireSense_nonAnnualSpreadFitCovariates <- list(nonAnnualPre2011, nonAnnualPost2011)
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
                                                          paste(names(post2011Indices), collapse = "_"))
 
-  mod$climateComponents <- NULL # remove for memory sake
   return(invisible(sim))
 }
 
@@ -551,6 +570,8 @@ prepare_IgnitionFit <- function(sim) {
    rbindlist(.) %>%
      as.data.frame(.) #TODO: confirm this
    #Formula naming won't work with >1 climate variable, regardless a stop is upstream
+
+   # recall that fuelClass 1 is actually youngAge.
    RHS <- names(sim$fireSense_ignitionCovariates) %>%
      .[!. %in% c("cells", "nFires", names(sim$historicalClimateRasters))] %>%
      paste0(., ":", names(sim$historicalClimateRasters)) %>%
@@ -561,6 +582,14 @@ prepare_IgnitionFit <- function(sim) {
   return(sim)
 }
 
+cleanUpMod <- function(sim){
+  #because prep for ignition/escape/spread isn't necessarily run, clean up here
+  mod$climateComponents <- NULL # remove for memory sake
+  mod$firePolysForAge <- NULL
+  mod$fireSenseVegData <- NULL
+
+  return(invisible(sim))
+}
 ### template for save events
 Save <- function(sim) {
   # ! ----- EDIT BELOW ----- ! #
@@ -635,6 +664,25 @@ plotFun <- function(sim) {
     }
   }
 
+  if (!suppliedElsewhere("standAgeMap2001", sim)) {
+    sim$standAgeMap2001 <- Cache(prepInputsStandAgeMap,
+                                 rasterToMatch = sim$rasterToMatch,
+                                 studyArea = sim$studyArea,
+                                 destinationPath = dPath,
+                                 filename2 = 'standAgeMap2001.tif',
+                                 startTime = 2001,
+                                 userTags = c(cacheTags, 'prepInputsStandAgeMap2001'))
+  }
+
+  if (!suppliedElsewhere("standAgeMap2011", sim)) {
+    sim$standAgeMap2011 <- Cache(prepInputsStandAgeMap,
+                                 rasterToMatch = sim$rasterToMatch,
+                                 studyArea = sim$studyArea,
+                                 destinationPath = dPath,
+                                 filename2 = 'standAgeMap2011.tif',
+                                 startTime = 2011,
+                                 userTags = c(cacheTags, 'prepInputsStandAgeMap2011'))
+  }
 
   if (!suppliedElsewhere("spreadFirePoints", sim)) {
     message("... preparing polyCentroids; starting up parallel R threads")
