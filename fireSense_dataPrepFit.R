@@ -10,7 +10,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list("raster", "sf", "sp", "data.table", "PredictiveEcology/fireSenseUtils (>=0.0.3.0000)",
+  reqdPkgs = list("raster", "sf", "sp", "data.table", "PredictiveEcology/fireSenseUtils (>=0.0.4)",
                   "parallel", "fastDummies", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -72,7 +72,7 @@ defineModule(sim, list(
                  desc = paste0("List of SpatialPolygonsDataFrames representing annual fire polygons.",
                                "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput(objectName = 'firePolysForAge', objectClass = 'list', sourceURL = NA,
-                 desc=  'firePolys used to classify timeSinceDisturbance in nonforest LCC'),
+                 desc = "firePolys used to classify timeSinceDisturbance in nonforest LCC"),
     expectsInput(objectName = "flammableRTM", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "RTM without ice/rocks/urban/water. Flammable map with 0 and 1."),
     expectsInput(objectName = "historicalClimateRasters", objectClass = "list", sourceURL = NA,
@@ -143,9 +143,6 @@ defineModule(sim, list(
   )
 ))
 
-## event types
-#   - type `init` is required for initialization
-
 doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
   switch(
     eventType,
@@ -153,9 +150,8 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       ### check for more detailed object dependencies:
       ### (use `checkObject` or similar)
 
-      if (!all(P(sim)$whichModulesToPrepare %in% c("fireSense_SpreadFit",
-                                                   "fireSense_IgnitionFit",
-                                                   "fireSense_EscapeFit"))){
+      if (!all(P(sim)$whichModulesToPrepare %in%
+               c("fireSense_SpreadFit", "fireSense_IgnitionFit", "fireSense_EscapeFit"))) {
         stop("unrecognized module to prepare - review parameter whichModulesToPrepare")
         #the camelcase is still different with FS from LandR Biomass
       }
@@ -453,10 +449,9 @@ Init <- function(sim) {
 }
 
 prepare_SpreadFit <- function(sim) {
-
-  #Put in format for DEOptim
-  #Prepare annual spread fit covariates
-  #this is a funny way to get years but avoids years with 0 fires
+  ## Put in format for DEOptim
+  ## Prepare annual spread fit covariates
+  ## this is a funny way to get years but avoids years with 0 fires
   years <- paste0("year", P(sim)$fireYears)
   yearsWithFire <- years[paste0("year", P(sim)$fireYears) %in% names(sim$firePolys)]
   pre2011 <- yearsWithFire[yearsWithFire %in% paste0("year", min(P(sim)$fireYears):2010)]
@@ -475,7 +470,6 @@ prepare_SpreadFit <- function(sim) {
   })
   names(fireSense_annualSpreadFitCovariates) <- years
 
-
   #prepare non-annual spread fit covariates
   pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
   post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
@@ -490,7 +484,6 @@ prepare_SpreadFit <- function(sim) {
     na.omit(.) %>%
     as.data.table(.) %>%
     .[, youngAge := NULL]
-
 
   #Create one universal TSD map for each initial time period combining stand age/ time since burn
   TSD2001 <- makeTSD(year = 2001, firePolys = sim$firePolysForAge,
