@@ -10,7 +10,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list("raster", "sf", "sp", "data.table", "PredictiveEcology/fireSenseUtils (>=0.0.4)",
+  reqdPkgs = list("raster", "sf", "sp", "data.table", "PredictiveEcology/fireSenseUtils (>=0.0.4.9000)",
                   "parallel", "fastDummies", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -487,8 +487,7 @@ prepare_SpreadFit <- function(sim) {
 
   #Create one universal TSD map for each initial time period combining stand age/ time since burn
   TSD2001 <- makeTSD(year = 2001, firePolys = sim$firePolysForAge,
-                     standAgeMap = sim$standAgeMap2001,
-                     lcc = sim$landcoverDT)
+                                     standAgeMap = sim$standAgeMap2001, lcc = sim$landcoverDT)
   TSD2011 <- makeTSD(year = 2011, firePolys = sim$firePolysForAge,
                      standAgeMap = sim$standAgeMap2011,
                      lcc = sim$landcoverDT)
