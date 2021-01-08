@@ -5,13 +5,14 @@ defineModule(sim, list(
   authors = structure(list(list(given = c("Ian"), family = "Eddy", role = c("aut", "cre"),
                                 email = "ian.eddy@canada.ca", comment = NULL)), class = "person"),
   childModules = character(0),
-  version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9000"),
+  version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9001"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list("raster", "sf", "sp", "data.table", "ggplot2", "PredictiveEcology/fireSenseUtils (>=0.0.4.9000)",
-                  "parallel", "fastDummies", "spatialEco", "snow"),
+  reqdPkgs = list("data.table", "fastDummies", "ggplot2",
+                  "PredictiveEcology/fireSenseUtils (>=0.0.4.9001)",
+                  "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".plotInitialTime", "numeric", NA, NA, NA,
@@ -92,15 +93,13 @@ defineModule(sim, list(
                  desc = "RasterLayer that defines the pixelGroups for cohortData table in 2011"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "template raster for study area"),
-    expectsInput(objectName = 'rasterToMatch', objectClass = 'RasterLayer', sourceURL = NA,
-                 desc = "template raster for study area"),
     expectsInput(objectName = "rstLCC", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "Raster of land cover. Defaults to LCC05."),
     expectsInput(objectName = "sppEquiv", objectClass = "data.table", sourceURL = NA,
                  desc = "table of LandR species equivalencies"),
-    expectsInput(objectName = 'standAgeMap2001', objectClass = "RasterLayer", sourceURL = NA,
+    expectsInput(objectName = "standAgeMap2001", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "map of stand age in 2001 used to create cohortData2001"),
-    expectsInput(objectName = 'standAgeMap2011', objectClass = "RasterLayer", sourceURL = NA,
+    expectsInput(objectName = "standAgeMap2011", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "map of stand age in 2011 used to create cohortData2011"),
     expectsInput(objectName = "studyArea", objectClass = "SpatialPolygonsDataFrame", sourceURL = NA,
                  desc = "studyArea that determines spatial boundaries of all data"),
@@ -168,7 +167,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
 
-      if (P(sim)$plotPCA){
+      if (P(sim)$plotPCA) {
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       }
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
@@ -229,7 +228,7 @@ Init <- function(sim) {
     names(sim$spreadFirePoints) <- origNames
   }
 
-  nCores <- ifelse(grep('*Windows', osVersion), 1, length(sim$firePolys))
+  nCores <- ifelse(grep("*Windows", osVersion), 1, length(sim$firePolys))
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
@@ -608,8 +607,8 @@ plotAndMessage <- function(sim) {
   components <- as.data.table(sim$PCAveg$rotation)
   setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
   components[, covariate := row.names(sim$PCAveg$rotation)]
-  setcolorder(components, neworder = 'covariate')
-  componentPrintOut <- components[, .SD, .SDcol = c('covariate', sim$vegComponentsToUse)]
+  setcolorder(components, neworder = "covariate")
+  componentPrintOut <- components[, .SD, .SDcol = c("covariate", sim$vegComponentsToUse)]
 
   components <- melt.data.table(data = componentPrintOut,
                                 id.vars = c("covariate"),
@@ -624,7 +623,7 @@ plotAndMessage <- function(sim) {
 
   coeffPlot <- ggplot(data = components, aes(x = component, y = covariate, fill = loading)) +
     geom_tile() +
-    scale_fill_gradient2(low = "blue", mid = 'white', high = 'red') +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red") +
     geom_text(data = components, label = components$loading) +
     ggtitle("loading of components most correlated with fire")
 
@@ -692,7 +691,7 @@ plotAndMessage <- function(sim) {
                                  rasterToMatch = sim$rasterToMatch,
                                  studyArea = sim$studyArea,
                                  destinationPath = dPath,
-                                 filename2 = 'standAgeMap2001.tif',
+                                 filename2 = "standAgeMap2001.tif",
                                  startTime = 2001,
                                  userTags = c(cacheTags, 'prepInputsStandAgeMap2001'))
   }
