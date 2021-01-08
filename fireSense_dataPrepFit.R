@@ -10,7 +10,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list("raster", "sf", "sp", "data.table", "PredictiveEcology/fireSenseUtils (>=0.0.4.9000)",
+  reqdPkgs = list("raster", "sf", "sp", "data.table", "ggplot2", "PredictiveEcology/fireSenseUtils (>=0.0.4.9000)",
                   "parallel", "fastDummies", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -51,6 +51,8 @@ defineModule(sim, list(
                     desc = "number of veg and terrain components to include in GLM"),
     defineParameter(name = "PCAcomponentsFromGLM", "numeric", 5, 0, NA,
                     desc = "the number of components to select from GLM model of burn ~ PCAcomponents" ),
+    defineParameter(name = "plotPCA", class = "logical", default = TRUE, NA, NA,
+                    desc = "plot the PCA components with a heat map"),
     defineParameter(name = "sppEquivCol", class = "character", default = "LandR", NA, NA,
                     desc = "column name in sppEquiv object that defines unique species in cohortData"),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
@@ -166,7 +168,9 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
 
-      sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
+      if (P(sim)$plotPCA){
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
+      }
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
 
     },
@@ -557,7 +561,7 @@ prepare_IgnitionFit <- function(sim) {
    pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
    post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
-   sim$fireSense_ignitionCovariates <- Map(f = stackAndExtract,
+   sim$fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
                      years = list(pre2011, post2011),
                      fuel = list(fuelClasses$year2001, fuelClasses$year2011),
                      MoreArgs = list(LCC = LCCs,
@@ -607,12 +611,24 @@ plotAndMessage <- function(sim) {
   setcolorder(components, neworder = 'covariate')
   componentPrintOut <- components[, .SD, .SDcol = c('covariate', sim$vegComponentsToUse)]
 
-  message("the loading of the components most correlated with fire are:")
-  print(componentPrintOut)
-
+  components <- melt.data.table(data = componentPrintOut,
+                                id.vars = c("covariate"),
+                                variable.name = "component",
+                                value.name = "loading")
+  components[, loading := round(loading, digits = 2)]
   coefficientPrintOut <- sim$fireSense_spreadLogitModel$coefficients[sim$vegComponentsToUse]
-  message("the coefficients of these components are:")
-  print(coefficientPrintOut)
+  coefficientSigns <- data.table(val = coefficientPrintOut, component = names(coefficientPrintOut))
+  components <- coefficientSigns[components, on = "component"]
+  components[, sign := ifelse(val < 0, "-", "+")]
+  components[, component := paste0(component, sign)]
+
+  coeffPlot <- ggplot(data = components, aes(x = component, y = covariate, fill = loading)) +
+    geom_tile() +
+    scale_fill_gradient2(low = "blue", mid = 'white', high = 'red') +
+    geom_text(data = components, label = components$loading) +
+    ggtitle("loading of components most correlated with fire")
+
+  plot(coeffPlot)
 
   return(invisible(sim))
 }
