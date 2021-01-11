@@ -577,7 +577,7 @@ prepare_IgnitionFit <- function(sim) {
      paste0(., ":", names(sim$historicalClimateRasters)) %>%
      paste(., collapse = " + ")
    #review formula
-   sim$fireSense_ignitionFormula <- paste("nFires ~0 + ", paste(RHS))
+   sim$fireSense_ignitionFormula <- paste("nFires ~", paste(RHS), " - 1")
 
   return(sim)
 }
