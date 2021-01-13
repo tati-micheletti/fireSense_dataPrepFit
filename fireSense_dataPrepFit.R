@@ -610,6 +610,8 @@ plotAndMessage <- function(sim) {
   setcolorder(components, neworder = "covariate")
   componentPrintOut <- components[, .SD, .SDcol = c("covariate", sim$vegComponentsToUse)]
 
+  print(componentPrintOut)
+
   components <- melt.data.table(data = componentPrintOut,
                                 id.vars = c("covariate"),
                                 variable.name = "component",
