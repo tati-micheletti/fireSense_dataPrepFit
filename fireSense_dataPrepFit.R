@@ -11,7 +11,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2",
-                  "PredictiveEcology/fireSenseUtils (>=0.0.4.9001)",
+                  "PredictiveEcology/fireSenseUtils (>=0.0.4.9003)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -390,7 +390,6 @@ Init <- function(sim) {
     #scale climCol to have unit variance and mean center
     set(climateComponents, NULL, "climPCA1",
         scale(climateComponents[, .SD, .SDcols = climCol], center = TRUE, scale = TRUE))
-    climateComponents[, climPCA1 := asInteger(climPCA1 * 1000)]
     climateComponents <- climateComponents[, .SD, .SDcols = c("pixelID", "climPCA1", "year")]
   }
   #this is to construct the formula,
