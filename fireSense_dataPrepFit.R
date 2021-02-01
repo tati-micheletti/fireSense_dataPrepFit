@@ -11,7 +11,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2",
-                  "PredictiveEcology/fireSenseUtils (>=0.0.4.9003)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9007)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -302,7 +302,8 @@ Init <- function(sim) {
 
 # cannot merge because before subsetting due to column differences over time
 
-  mod$firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0], FUN = sf::st_as_sf) %>%
+  mod$firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0],
+                                FUN = sf::st_as_sf) %>%
     lapply(., FUN = function(x){
         x <- x[, "YEAR"]
       }) %>%
@@ -341,7 +342,47 @@ Init <- function(sim) {
   names(fireBufferedListDT) <- origNames
   rm(origNames)
 
-  ###*predict will run castCohortData and then makeVegTerrainPCA for predicting
+  if (FALSE) {
+    ras <- raster(sim$pixelGroupMap2001)
+    ras2001 <- raster::stack(lapply(colnames(vegPCAdat), function(n) {
+      ras <- raster(ras)
+      ras[vegPCAdat$pixelID] <- vegPCAdat[year == 2001][[n]]
+      ras
+    }))
+    ras2011 <- raster::stack(lapply(colnames(vegPCAdat), function(n) {
+      ras <- raster(ras)
+      ras[vegPCAdat$pixelID] <- vegPCAdat[year == 2011][[n]]
+      ras
+    }))
+    names(ras2001) <- colnames(vegPCAdat)
+    names(ras2011) <- colnames(vegPCAdat)
+
+    ras2001 <- ras2001[[which(!names(ras2001) %in% c("pixelGroup", "pixelID", "year"))]]
+    ras2011 <- ras2011[[which(!names(ras2011) %in% c("pixelGroup", "pixelID", "year"))]]
+    names(ras2001) <- paste0(names(ras2001), "_2001")
+    names(ras2011) <- paste0(names(ras2011), "_2011")
+    rass <- raster::stack(ras2001, ras2011)
+
+    dontAlter <- c("TPI", "HLI", "nonForest_highFlam", "nonForest_lowFlam")
+    onlyAddBack <- c("TPI", "HLI", "nonForest_highFlam", "nonForest_lowFlam")
+    dontWant <- c("pixelGroup", "pixelID", "year", "youngAge")
+    dont <- c(dontWant, dontAlter)
+    dd <- vegPCAdat[, !..dont]
+    theSample <- sample(NROW(dd), size = 4e5)
+    ddSam <- dd
+    par(mfrow = c(4,4))
+    #lapply(colnames(ddSam), function(x) hist(log(ddSam[[x]]+20), main = x))
+    ddSam <- setDT(lapply(colnames(ddSam), function(x) log(ddSam[[x]]+1)))
+    for (column in onlyAddBack) set(ddSam, NULL, column, vegPCAdat[[column]])
+    ddSam <- ddSam[theSample]
+    vegTerrainPCA <- prcomp(ddSam, center = TRUE, scale. = TRUE, rank = 10)
+    ee <- vegTerrainPCA$x
+    #par(mfrow = c(3,4))
+    lapply(colnames(ee), function(x) hist(ee[,x], main = x))
+
+    vegComponents <- as.data.table(vegTerrainPCA$x)
+    ###*predict will run castCohortData and then makeVegTerrainPCA for predicting
+  }
   vegList <- makeVegTerrainPCA(dataForPCA = vegPCAdat)
   vegComponents <- vegList$vegComponents
   sim$PCAveg <- vegList$vegTerrainPCA
