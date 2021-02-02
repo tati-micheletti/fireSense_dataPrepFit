@@ -123,8 +123,13 @@ defineModule(sim, list(
                   desc = "list of two tables with veg PCA components, burn status, polyID, and pixelID"),
     createsOutput(objectName = "fireSense_spreadFormula", objectClass = "character",
                   desc = "formula for spread, using climate and terrain components, as character"),
-    createsOutput(objectName = "fireSense_spreadLogitModel", objectClass = "glm",
-                  desc = "GLM with burn as dependent variable and PCA components as covariates"),
+    # createsOutput(objectName = "fireSense_spreadLogitModel", objectClass = "glm",
+    #               desc = "GLM with burn as dependent variable and PCA components as covariates"),
+    createsOutput(objectName = "coefficientPrintOut", "data.table",
+                  desc = paste("Coefficients from the logit model")),
+    createsOutput(objectName = "componentPrintOut", "data.table",
+                  desc = paste("A data.table showing the PCA axes and their loadings with the different ",
+                               "covariates, e.g., fuel, TPI, HLI, etc.")),
     createsOutput(objectName = "landcoverDT", "data.table",
                   desc = paste("data.table with pixelID and relevant landcover classes",
                                "that is used by predict functions")),
@@ -309,7 +314,8 @@ Init <- function(sim) {
       }) %>%
     do.call(rbind, .)
 
-  cohorts2001 <-  castCohortData(cohortData = sim$cohortData2001,
+  origDTThreads <- data.table::setDTthreads(2)
+  cohorts2001 <-  Cache(castCohortData, cohortData = sim$cohortData2001,
                                  pixelGroupMap = sim$pixelGroupMap2001,
                                  year = 2001,
                                  ageMap = NULL,
@@ -317,7 +323,7 @@ Init <- function(sim) {
                                  terrainDT = sim$terrainDT,
                                  missingLCC = P(sim)$missingLCC)
 
-  cohorts2011 <-  castCohortData(cohortData = sim$cohortData2011,
+  cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
                                  pixelGroupMap = sim$pixelGroupMap2011,
                                  year = 2011,
                                  ageMap = NULL,
@@ -325,22 +331,29 @@ Init <- function(sim) {
                                  terrainDT = sim$terrainDT,
                                  missingLCC = P(sim)$missingLCC)
 
-  vegPCAdat <- rbind(cohorts2001, cohorts2011)
+  vegPCAdat <- rbindlist(list(cohorts2001, cohorts2011))
 
-  rm(cohorts2001, cohorts2011, lcc)
+  # rm(cohorts2001, cohorts2011, lcc)
 
   #Clean up missing pixels - this is a temporary fix
   #we will always have NAs because of edge pixels - will be an issue when predicting
-  origNames <- names(fireBufferedListDT)
-  fireBufferedListDT <- lapply(fireBufferedListDT, FUN = function(year){
-    missingPixels <- year[!pixelID %in% vegPCAdat$pixelID]
-    if (nrow(missingPixels) > 0) {
-      year <- year[!pixelID %in% missingPixels$pixelID]
-    }
-    return(year)
-  })
-  names(fireBufferedListDT) <- origNames
-  rm(origNames)
+  # The next 3 lines replace the 8 or so lines after
+  fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegPCAdat$pixelID)
+  #fbldt <- rbindlist(fireBufferedListDT, idcol = "year")
+  #fbldt <- unique(vegPCAdat, by = "pixelID")[, .(pixelID)][fbldt, on = "pixelID", nomatch = NULL]
+  # fbldt3 <- fbldt[fbldt$pixelID %in% unique(vegPCAdat$pixelID)]
+  #fireBufferedListDT <- split(fbldt, by = "year", keep.by = FALSE)
+
+  # origNames <- names(fireBufferedListDT)
+  # fireBufferedListDT <- lapply(fireBufferedListDT, FUN = function(year){
+  #   missingPixels <- year[!pixelID %in% vegPCAdat$pixelID]
+  #   if (nrow(missingPixels) > 0) {
+  #     year <- year[!pixelID %in% missingPixels$pixelID]
+  #   }
+  #   return(year)
+  # })
+  # names(fireBufferedListDT) <- origNames
+  # rm(origNames)
 
   if (FALSE) {
     ras <- raster(sim$pixelGroupMap2001)
@@ -383,13 +396,20 @@ Init <- function(sim) {
     vegComponents <- as.data.table(vegTerrainPCA$x)
     ###*predict will run castCohortData and then makeVegTerrainPCA for predicting
   }
-  vegList <- makeVegTerrainPCA(dataForPCA = vegPCAdat)
+
+  # Next line can't handle memoising well
+  opts <- options("reproducible.useMemoise" = FALSE)
+  vegList <- Cache(makeVegTerrainPCA, dataForPCA = vegPCAdat)
+  options(opts)
   vegComponents <- vegList$vegComponents
   sim$PCAveg <- vegList$vegTerrainPCA
   rm(vegList, vegPCAdat)
 
   components <- paste0("PC", 1:P(sim)$PCAcomponentsForVeg)
-  vegComponents <- vegComponents[, .SD, .SDcols = c(components, "pixelID", "year", "youngAge")]
+  removeCols <- setdiff(colnames(vegComponents), c(components, "pixelID", "year", "youngAge"))
+  if (length(removeCols))
+    set(vegComponents, NULL, removeCols, NULL)
+  # vegComponents <- vegComponents[, .SD, .SDcols = c(components, "pixelID", "year", "youngAge")]
   #rename components so climate/veg components distinguishable
   setnames(vegComponents, old = components, new = paste0("veg", components))
   rm(components)
@@ -430,8 +450,10 @@ Init <- function(sim) {
     climCol <- names(climateComponents)[!colnames(climateComponents) %in% c("pixelID", "year")]
     #scale climCol to have unit variance and mean center
     set(climateComponents, NULL, "climPCA1",
-        scale(climateComponents[, .SD, .SDcols = climCol], center = TRUE, scale = TRUE))
-    climateComponents <- climateComponents[, .SD, .SDcols = c("pixelID", "climPCA1", "year")]
+        scale(climateComponents[[climCol]], center = TRUE, scale = TRUE))
+    removeCols <- setdiff(colnames(climateComponents), c("pixelID", "climPCA1", "year"))
+    set(climateComponents, NULL, removeCols, NULL)
+    # climateComponents <- climateComponents[, .SD, .SDcols = c("pixelID", "climPCA1", "year")]
   }
   #this is to construct the formula,
   #whether there are multiple climate components or a single non-transformed variable
@@ -475,7 +497,8 @@ Init <- function(sim) {
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
   sim$vegComponentsToUse <- names(bestComponents) #the values will be wrong due to abs, just take names
-  sim$fireSense_spreadLogitModel <- fireSenseLogit
+  # mod$fireSense_spreadLogitModel <- fireSenseLogit
+  sim$coefficientPrintOut <- fireSenseLogit$coefficients[sim$vegComponentsToUse]
 
   RHS <- paste0("youngAge +",
                 paste(sim$climateComponentsToUse, collapse = " + "),
@@ -651,17 +674,19 @@ plotAndMessage <- function(sim) {
   setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
   components[, covariate := row.names(sim$PCAveg$rotation)]
   setcolorder(components, neworder = "covariate")
-  componentPrintOut <- components[, .SD, .SDcol = c("covariate", sim$vegComponentsToUse)]
+  sim$componentPrintOut <- components[, .SD, .SDcol = c("covariate", sim$vegComponentsToUse)]
 
-  print(componentPrintOut)
+  print(sim$componentPrintOut)
 
-  components <- melt.data.table(data = componentPrintOut,
+  components <- melt.data.table(data = sim$componentPrintOut,
                                 id.vars = c("covariate"),
                                 variable.name = "component",
                                 value.name = "loading")
   components[, loading := round(loading, digits = 2)]
-  coefficientPrintOut <- sim$fireSense_spreadLogitModel$coefficients[sim$vegComponentsToUse]
-  coefficientSigns <- data.table(val = coefficientPrintOut, component = names(coefficientPrintOut))
+
+  # coefficientPrintOut <- fireSenseLogit$coefficients[sim$vegComponentsToUse]
+  # coefficientPrintOut <- mod$fireSense_spreadLogitModel$coefficients[sim$vegComponentsToUse]
+  coefficientSigns <- data.table(val = sim$coefficientPrintOut, component = names(sim$coefficientPrintOut))
   components <- coefficientSigns[components, on = "component"]
   components[, sign := ifelse(val < 0, "-", "+")]
   components[, component := paste0(component, sign)]
@@ -846,4 +871,10 @@ plotAndMessage <- function(sim) {
   }
 
   return(invisible(sim))
+}
+
+rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
+  fbldt <- rbindlist(fbldt, idcol = "year")
+  fbldt <- fbldt[pixelID %in% unique(pixelIDsAllowed)]
+  fireBufferedListDT <- split(fbldt, by = "year", keep.by = FALSE)
 }
