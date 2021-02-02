@@ -570,6 +570,7 @@ prepare_SpreadFit <- function(sim) {
   )
   sim$fireSense_annualSpreadFitCovariates <- do.call(c, annualCovariates)
 
+  sim$nonForest_timeSinceDisturbance <- TSD2011 #the default starting year for fireSense_dataPrepPredict
   sim$fireSense_nonAnnualSpreadFitCovariates <- list(nonAnnualPre2011, nonAnnualPost2011)
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
                                                          paste(names(post2011Indices), collapse = "_"))
