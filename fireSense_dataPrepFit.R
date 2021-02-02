@@ -522,11 +522,14 @@ prepare_SpreadFit <- function(sim) {
   nonAnnualPre2011 <- mod$fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
     na.omit(.) %>%
     as.data.table(.) %>%
-    .[, youngAge := NULL]
+    .[, youngAge := NULL] %>%
+    .[!duplicated(pixelID),]
+
   nonAnnualPost2011 <- mod$fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
     na.omit(.) %>%
     as.data.table(.) %>%
-    .[, youngAge := NULL]
+    .[, youngAge := NULL] %>%
+    .[!duplicated(pixelID)] #remove duplicates from same pixel diff year
 
   #Create one universal TSD map for each initial time period combining stand age/ time since burn
   TSD2001 <- makeTSD(year = 2001, firePolys = sim$firePolysForAge,
