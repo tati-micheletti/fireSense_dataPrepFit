@@ -385,7 +385,7 @@ Init <- function(sim) {
     ddSam <- dd
     par(mfrow = c(4,4))
     #lapply(colnames(ddSam), function(x) hist(log(ddSam[[x]]+20), main = x))
-    ddSam <- setDT(lapply(colnames(ddSam), function(x) log(ddSam[[x]]+1)))
+    ddSam <- setDT(lapply(colnames(ddSam), function(x) log(ddSam[[x]] + 1)))
     for (column in onlyAddBack) set(ddSam, NULL, column, vegPCAdat[[column]])
     ddSam <- ddSam[theSample]
     vegTerrainPCA <- prcomp(ddSam, center = TRUE, scale. = TRUE, rank = 10)
@@ -444,16 +444,8 @@ Init <- function(sim) {
     setnames(climateComponents, old = components, new = paste0("climate", components))
     rm(components, climatePCA)
   } else {
-    #if there is only one climate variable, no PCA
+    #don't rename, don't rescale
     climateComponents <- climatePCAdat[[1]]
-    setDT(climateComponents)
-    climCol <- names(climateComponents)[!colnames(climateComponents) %in% c("pixelID", "year")]
-    #scale climCol to have unit variance and mean center
-    set(climateComponents, NULL, "climPCA1",
-        scale(climateComponents[[climCol]], center = TRUE, scale = TRUE))
-    removeCols <- setdiff(colnames(climateComponents), c("pixelID", "climPCA1", "year"))
-    set(climateComponents, NULL, removeCols, NULL)
-    # climateComponents <- climateComponents[, .SD, .SDcols = c("pixelID", "climPCA1", "year")]
   }
   #this is to construct the formula,
   #whether there are multiple climate components or a single non-transformed variable
@@ -827,7 +819,7 @@ plotAndMessage <- function(sim) {
       years = P(sim)$fireYears,
       NFDB_pointPath = dPath,
       userTags = c("ignitionFirePoints", P(sim)$.studyAreaName))
-    #TODO: what should we set arg redownloadIn to?
+    # TODO: what should we set arg redownloadIn to?
   }
 
   if (!suppliedElsewhere("rstLCC", sim)) {
