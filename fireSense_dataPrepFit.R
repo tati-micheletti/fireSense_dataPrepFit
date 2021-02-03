@@ -444,16 +444,8 @@ Init <- function(sim) {
     setnames(climateComponents, old = components, new = paste0("climate", components))
     rm(components, climatePCA)
   } else {
-    #if there is only one climate variable, no PCA
+    #don't rename, don't rescale
     climateComponents <- climatePCAdat[[1]]
-    setDT(climateComponents)
-    climCol <- names(climateComponents)[!colnames(climateComponents) %in% c("pixelID", "year")]
-    #scale climCol to have unit variance and mean center
-    set(climateComponents, NULL, "climPCA1",
-        scale(climateComponents[[climCol]], center = TRUE, scale = TRUE))
-    removeCols <- setdiff(colnames(climateComponents), c("pixelID", "climPCA1", "year"))
-    set(climateComponents, NULL, removeCols, NULL)
-    # climateComponents <- climateComponents[, .SD, .SDcols = c("pixelID", "climPCA1", "year")]
   }
   #this is to construct the formula,
   #whether there are multiple climate components or a single non-transformed variable
