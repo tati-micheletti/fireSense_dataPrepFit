@@ -385,7 +385,7 @@ Init <- function(sim) {
     ddSam <- dd
     par(mfrow = c(4,4))
     #lapply(colnames(ddSam), function(x) hist(log(ddSam[[x]]+20), main = x))
-    ddSam <- setDT(lapply(colnames(ddSam), function(x) log(ddSam[[x]]+1)))
+    ddSam <- setDT(lapply(colnames(ddSam), function(x) log(ddSam[[x]] + 1)))
     for (column in onlyAddBack) set(ddSam, NULL, column, vegPCAdat[[column]])
     ddSam <- ddSam[theSample]
     vegTerrainPCA <- prcomp(ddSam, center = TRUE, scale. = TRUE, rank = 10)
@@ -827,7 +827,7 @@ plotAndMessage <- function(sim) {
       years = P(sim)$fireYears,
       NFDB_pointPath = dPath,
       userTags = c("ignitionFirePoints", P(sim)$.studyAreaName))
-    #TODO: what should we set arg redownloadIn to?
+    # TODO: what should we set arg redownloadIn to?
   }
 
   if (!suppliedElsewhere("rstLCC", sim)) {
