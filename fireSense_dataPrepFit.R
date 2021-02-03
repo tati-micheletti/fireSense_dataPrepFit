@@ -11,7 +11,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9007)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9013)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -403,7 +403,7 @@ Init <- function(sim) {
   options(opts)
   vegComponents <- vegList$vegComponents
   sim$PCAveg <- vegList$vegTerrainPCA
-  rm(vegList, vegPCAdat)
+  # rm(vegList, vegPCAdat)
 
   components <- paste0("PC", 1:P(sim)$PCAcomponentsForVeg)
   removeCols <- setdiff(colnames(vegComponents), c(components, "pixelID", "year", "youngAge"))
@@ -412,7 +412,7 @@ Init <- function(sim) {
   # vegComponents <- vegComponents[, .SD, .SDcols = c(components, "pixelID", "year", "youngAge")]
   #rename components so climate/veg components distinguishable
   setnames(vegComponents, old = components, new = paste0("veg", components))
-  rm(components)
+  # rm(components)
 
   ####prep Climate components####
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
