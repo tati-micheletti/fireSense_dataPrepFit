@@ -550,11 +550,11 @@ prepare_SpreadFit <- function(sim) {
 
   #Create one universal TSD map for each initial time period combining stand age/ time since burn
   TSD2001 <- makeTSD(year = 2001, firePolys = sim$firePolysForAge,
-                                     standAgeMap = sim$standAgeMap2001, lcc = sim$landcoverDT)
+                     standAgeMap = sim$standAgeMap2001, lcc = sim$landcoverDT)
   TSD2011 <- makeTSD(year = 2011, firePolys = sim$firePolysForAge,
-                     standAgeMap = sim$standAgeMap2011,
-                     lcc = sim$landcoverDT)
+                     standAgeMap = sim$standAgeMap2011, lcc = sim$landcoverDT)
   #the function will do this below, and then use the data.table with location of non-forest to fill in those ages
+
   annualCovariates <- Map(f = calcYoungAge,
                           years = list(c(2001:2010), c(2011:max(P(sim)$fireYears))),
                           annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
