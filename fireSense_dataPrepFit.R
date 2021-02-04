@@ -137,6 +137,8 @@ defineModule(sim, list(
                   desc = "time since burn for non-forested pixels"),
     createsOutput(objectName = "PCAclimate", objectClass = "prcomp",
                   desc = "PCA model for climate covariates, needed for fireSensePredict"),
+    createsOutput(objectName = "PCAcoeffPlot", objectClass = "gglot",
+                  desc = "ggplot with PCA loadings for axes used to predict spread"),
     createsOutput(objectName = "PCAveg", objectClass = "prcomp",
                   desc = "PCA model for veg and LCC covariates, needed for FS models"),
     createsOutput(objectName = "spreadFirePoints", objectClass = "list",
@@ -173,7 +175,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
 
       if (P(sim)$plotPCA) {
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
+        sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       }
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
 
@@ -663,6 +665,7 @@ Save <- function(sim) {
 ### template for plot events
 plotAndMessage <- function(sim) {
 
+  checkPath(file.path(outputPath(sim), "figures"), create = TRUE)
   components <- as.data.table(sim$PCAveg$rotation)
   setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
   components[, covariate := row.names(sim$PCAveg$rotation)]
@@ -684,13 +687,14 @@ plotAndMessage <- function(sim) {
   components[, sign := ifelse(val < 0, "-", "+")]
   components[, component := paste0(component, sign)]
 
-  coeffPlot <- ggplot(data = components, aes(x = component, y = covariate, fill = loading)) +
+  sim$PCAcoeffPlot <- ggplot(data = components, aes(x = component, y = covariate, fill = loading)) +
     geom_tile() +
     scale_fill_gradient2(low = "blue", mid = "white", high = "red") +
     geom_text(data = components, label = components$loading) +
     ggtitle("loading of components most correlated with fire")
 
-  plot(coeffPlot)
+  plot(sim$PCAcoeffPlot)
+  ggsave(file.path(outputPath(sim), "figures", "PCAcoeffLoadings.png"), sim$PCAcoeffPlot)
 
   return(invisible(sim))
 }
