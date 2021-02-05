@@ -798,7 +798,7 @@ plotAndMessage <- function(sim) {
 
   if (!suppliedElsewhere("firePolys", sim)) {
     if (suppliedElsewhere("firePolysForAgeMap", sim)) { #don't want to needlessly postProcess the same firePolys objects
-      #Maybe this should all be moved to init - Then we source years from 15 years prior to P(sim)$fireYears
+      #Maybe this should all be moved to init - Then we source years from P(sim)$cutoffForYoungAge years prior to P(sim)$fireYears
       sim$firePolys <- Cache(fireSenseUtils::getFirePolygons, years = P(sim)$fireYears,
                              studyArea = sim$studyArea,
                              destinationPath = dPath,
@@ -807,7 +807,7 @@ plotAndMessage <- function(sim) {
     } else {
 
       allFirePolys <- Cache(fireSenseUtils::getFirePolygons,
-                             years = c(min(P(sim)$fireYears - 15):max(P(sim)$fireYears)), #get enough data for the before years
+                             years = c(min(P(sim)$fireYears - P(sim)$cutoffForYoungAge):max(P(sim)$fireYears)), #get enough data for the before years
                              studyArea = sim$studyArea,
                              destinationPath = dPath,
                              useInnerCache = TRUE,
@@ -821,7 +821,7 @@ plotAndMessage <- function(sim) {
   if (!suppliedElsewhere("firePolys", sim)) {
     if (is.null(sim$firePolysForAge)) { #this only happens if firePolys supplied but not firePolysForAge
       sim$allFirePolys <- Cache(fireSenseUtils::getFirePolygons,
-                            years = c(min(P(sim)$fireYears) - 15):max(P(sim)$fireYears), #get enough data for the before years
+                            years = c(min(P(sim)$fireYears) - P(sim)$cutoffForYoungAge):max(P(sim)$fireYears), #get enough data for the before years
                             studyArea = sim$studyArea,
                             destinationPath = dPath,
                             useInnerCache = TRUE,
