@@ -11,7 +11,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9017)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9018)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -673,7 +673,8 @@ prepare_IgnitionFit <- function(sim) {
                      pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
                      MoreArgs = list(flammableMap = sim$flammableRTM,
                                      sppEquiv = sim$sppEquiv,
-                                     sppEquivCol = P(sim)$sppEquivCol)) %>%
+                                     sppEquivCol = P(sim)$sppEquivCol,
+                                     cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
     lapply(., FUN = raster::brick) %>%
     lapply(., FUN = raster::aggregate, fact = 25, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
