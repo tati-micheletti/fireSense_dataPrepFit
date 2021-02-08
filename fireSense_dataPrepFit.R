@@ -240,7 +240,6 @@ Init <- function(sim) {
   }
 
   nCores <- ifelse(grep("*Windows", osVersion), 1, length(sim$firePolys))
-  browser()
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
@@ -283,7 +282,7 @@ Init <- function(sim) {
                           #pixelID = badStartsPixels[, "cells"],
                           raster::xyFromCell(sim$flammableRTM, badStartsPixels[, "cells"]))
         dd <- as.data.table(distanceFromEachPoint(to = xyPolys, from = xyPoints))
-        nearestPixels <- dd[, .SD[.I[which.min(dists)]], by = "id"]
+        nearestPixels <- dd[, .SD[which.min(dists)], by = "id"]
         idsToChange <- unique(nearestPixels$id)
 
         # Rm bad points that are just not in fires
