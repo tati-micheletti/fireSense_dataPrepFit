@@ -607,9 +607,9 @@ prepare_SpreadFit <- function(sim) {
     na.omit(.) %>%
     as.data.table(.) %>%
     .[, youngAge := NULL] %>%
-    .[!duplicated(pixelID)] #remove duplicates from same pixel diff year
+    .[!duplicated(pixelID)] # remove duplicates from same pixel diff year
 
-  #Create one universal TSD map for each initial time period combining stand age/ time since burn
+  # Create one universal TSD map for each initial time period combining stand age/ time since burn
   TSD2001 <- makeTSD(year = 2001, firePolys = sim$firePolysForAge,
                      standAgeMap = sim$standAgeMap2001, lcc = sim$landcoverDT,
                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)
@@ -624,7 +624,6 @@ prepare_SpreadFit <- function(sim) {
     annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
                             fireSense_annualSpreadFitCovariates[post2011]),
     standAgeMap = list(TSD2001, TSD2011)
-
   ), .f = calcYoungAge, fireBufferedListDT = sim$fireBufferedListDT,
   cutoffForYoungAge = P(sim)$cutoffForYoungAge)
 
@@ -668,13 +667,14 @@ prepare_IgnitionFit <- function(sim) {
     raster::aggregate(., fact = 25, fun = mean)
   names(LCCs) <- names(sim$nonForestedLCCGroups)
 
-  fuelClasses <- Map(f = classifyCohortsFireSenseSpread,
+  fuelClasses <- Map(f = cohortsToFuelClasses,
                      cohortData = list(sim$cohortData2001, sim$cohortData2011),
                      yearCohort = list(2001, 2011),
                      pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
                      MoreArgs = list(flammableMap = sim$flammableRTM,
                                      sppEquiv = sim$sppEquiv,
-                                     sppEquivCol = P(sim)$sppEquivCol)) %>%
+                                     sppEquivCol = P(sim)$sppEquivCol,
+                                     cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
     lapply(., FUN = raster::brick) %>%
     lapply(., FUN = raster::aggregate, fact = 25, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
@@ -799,20 +799,19 @@ plotAndMessage <- function(sim) {
 
   if (!suppliedElsewhere("firePolys", sim)) {
     if (suppliedElsewhere("firePolysForAgeMap", sim)) { #don't want to needlessly postProcess the same firePolys objects
-      #Maybe this should all be moved to init - Then we source years from 15 years prior to P(sim)$fireYears
+      #Maybe this should all be moved to init - Then we source years from P(sim)$cutoffForYoungAge years prior to P(sim)$fireYears
       sim$firePolys <- Cache(fireSenseUtils::getFirePolygons, years = P(sim)$fireYears,
                              studyArea = sim$studyArea,
                              destinationPath = dPath,
                              useInnerCache = TRUE,
                              userTags = c("firePolys", paste0("years:", range(P(sim)$fireYears))))
     } else {
-
       allFirePolys <- Cache(fireSenseUtils::getFirePolygons,
-                             years = c(min(P(sim)$fireYears - 15):max(P(sim)$fireYears)), #get enough data for the before years
-                             studyArea = sim$studyArea,
-                             destinationPath = dPath,
-                             useInnerCache = TRUE,
-                             userTags = c("firePolys", paste0("years:", range(P(sim)$fireYears))))
+                            years = c(min(P(sim)$fireYears - P(sim)$cutoffForYoungAge):max(P(sim)$fireYears)), #get enough data for the before years
+                            studyArea = sim$studyArea,
+                            destinationPath = dPath,
+                            useInnerCache = TRUE,
+                            userTags = c("firePolys", paste0("years:", range(P(sim)$fireYears))))
 
       sim$firePolys <- allFirePolys[names(allFirePolys) %in% paste0("year", P(sim)$fireYears)]
       sim$firePolysForAge <- allFirePolys
@@ -822,11 +821,11 @@ plotAndMessage <- function(sim) {
   if (!suppliedElsewhere("firePolys", sim)) {
     if (is.null(sim$firePolysForAge)) { #this only happens if firePolys supplied but not firePolysForAge
       sim$allFirePolys <- Cache(fireSenseUtils::getFirePolygons,
-                            years = c(min(P(sim)$fireYears) - 15):max(P(sim)$fireYears), #get enough data for the before years
-                            studyArea = sim$studyArea,
-                            destinationPath = dPath,
-                            useInnerCache = TRUE,
-                            userTags = c("firePolys", paste0("years:", range(P(sim)$fireYears))))
+                                years = c(min(P(sim)$fireYears) - P(sim)$cutoffForYoungAge):max(P(sim)$fireYears), #get enough data for the before years
+                                studyArea = sim$studyArea,
+                                destinationPath = dPath,
+                                useInnerCache = TRUE,
+                                userTags = c("firePolys", paste0("years:", range(P(sim)$fireYears))))
     }
   }
 
