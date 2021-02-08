@@ -11,7 +11,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9024)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9028)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -239,8 +239,7 @@ Init <- function(sim) {
     names(sim$spreadFirePoints) <- origNames
   }
 
-  nCores <- ifelse(grep("*Windows", osVersion), 1, length(sim$firePolys))
-  browser()
+  nCores <- ifelse(grepl("windows", Sys.info()[["sysname"]]), 1, length(sim$firePolys))
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
@@ -283,7 +282,7 @@ Init <- function(sim) {
                           #pixelID = badStartsPixels[, "cells"],
                           raster::xyFromCell(sim$flammableRTM, badStartsPixels[, "cells"]))
         dd <- as.data.table(distanceFromEachPoint(to = xyPolys, from = xyPoints))
-        nearestPixels <- dd[, .SD[.I[which.min(dists)]], by = "id"]
+        nearestPixels <- dd[, .SD[which.min(dists)], by = "id"]
         idsToChange <- unique(nearestPixels$id)
 
         # Rm bad points that are just not in fires
