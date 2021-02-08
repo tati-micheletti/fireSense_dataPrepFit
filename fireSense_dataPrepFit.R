@@ -10,8 +10,8 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9018)",
+  reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9024)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -39,7 +39,7 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
-    defineParameter(name = "minBufferSize", "numeric", 500, NA, NA,
+    defineParameter(name = "minBufferSize", "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
                     desc = paste("if a pixel is forested but is absent from cohortData, it will be grouped in this class.",
@@ -240,6 +240,7 @@ Init <- function(sim) {
   }
 
   nCores <- ifelse(grep("*Windows", osVersion), 1, length(sim$firePolys))
+  browser()
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
@@ -853,6 +854,12 @@ plotAndMessage <- function(sim) {
     clObj <- parallel::makeCluster(type = "SOCK", mc)
     a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
     clusterExport(cl = clObj, list("firePolys"), envir = sim)
+    # debug(reproducible:::dealWithRasters)
+    # debug(reproducible:::dealWithRastersOnRecovery)
+    # on.exit({
+    #   undebug(reproducible:::dealWithRasters)
+    #   undebug(reproducible:::dealWithRastersOnRecovery)
+    # }, add = TRUE)
     sim$spreadFirePoints <- Cache(FUN = parallel::clusterApply,
                                   x = sim$firePolys,
                                   cl = clObj,
