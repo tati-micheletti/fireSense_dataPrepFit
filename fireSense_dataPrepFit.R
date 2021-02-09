@@ -649,22 +649,44 @@ prepare_SpreadFit <- function(sim) {
 
 prepare_IgnitionFit <- function(sim) {
 
-  #first put landcover into raster stack - it will be aggregated
-  putBackIntoRaster <- function(lcc, landcoverDT, templateRas) {
-    lccRas <- raster(templateRas)
-    lccRas[landcoverDT$pixelID] <- landcoverDT[, get(lcc)]
-    return(lccRas)
+  #account for forested pixels that aren't in cohortData
+  sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
+  forestPix <- sim$landcoverDT[rowSums == 0,]$pixelID
+  problemPix2001 <- forestPix[is.na(sim$pixelGroupMap2001[forestPix])]
+  problemPix2011 <- forestPix[is.na(sim$pixelGroupMap2011[forestPix])]
+  set(sim$landcoverDT, NULL, 'rowSums', NULL)
+
+  #The non-forests aren't the same between years, due to cohortData being different
+  landcoverDT2001 <- copy(sim$landcoverDT)
+  landcoverDT2001[pixelID %in% problemPix2001, eval(P(sim)$missingLCC) := 1]
+  landcoverDT2011 <- copy(sim$landcoverDT)
+  landcoverDT2011[pixelID %in% problemPix2011, eval(P(sim)$missingLCC) := 1]
+  #TODO Work this into assertions
+  #all 'problem pixels' should be forest cover classes in LCC raster
+  #all(unique(sim$rstLCC[problemPix2001] %in% P(sim)$forestedLCC))
+  #all(unique(sim$rstLCC[problemPix2011] %in% P(sim)$forestedLCC))
+  #first put landcover into raster stack
+  #non-flammable pixels require zero values for non-forest landcover, not NA
+  putBackIntoRaster <- function(lcc, landcoverDT, flammableMap) {
+    lccRasters <- list()
+    for (i in 1:length(lcc)) {
+      lccRasters[[i]] <- raster(flammableMap)
+      lccRasters[[i]][!is.na(flammableMap)] <- 0 #all non-NA pixels must be 0
+      lccRasters[[i]][landcoverDT$pixelID] <- landcoverDT[, get(lcc[i])]
+    }
+    names(lccRasters) <- lcc
+    return(lccRasters)
   }
 
-  LCCs <- Cache(lapply,
-                names(sim$nonForestedLCCGroups),
-                putBackIntoRaster,
-                landcoverDT = sim$landcoverDT,
-                templateRas = sim$rasterToMatch,
-                userTags = c("putBackIntoRaster"))  %>%
-    stack(.) %>%
-    raster::aggregate(., fact = 25, fun = mean)
-  names(LCCs) <- names(sim$nonForestedLCCGroups)
+  LCCras <- Cache(Map,
+                  f = putBackIntoRaster,
+                  landcoverDT = list(landcoverDT2001,landcoverDT2011),
+                  MoreArgs = list(lcc = names(sim$nonForestedLCCGroups),
+                                  flammableMap = sim$flammableRTM),
+                  userTags = c("putBackIntoRaster"))  %>%
+    lapply(., FUN = brick) %>%
+    lapply(., FUN = aggregate, fact = 25, fun = mean)
+  names(LCCras) <- c("year2001", "year2011")
 
   fuelClasses <- Map(f = cohortsToFuelClasses,
                      cohortData = list(sim$cohortData2001, sim$cohortData2011),
@@ -675,10 +697,9 @@ prepare_IgnitionFit <- function(sim) {
                                      sppEquivCol = P(sim)$sppEquivCol,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
     lapply(., FUN = raster::brick) %>%
-    lapply(., FUN = raster::aggregate, fact = 25, fun = mean)
+    lapply(., FUN = aggregate, fact = 25, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
-  #Next aggregate fire data? for each year? Then get climate values. mix and match. done.
   climate <- Cache(lapply,
                    sim$historicalClimateRasters,
                    raster::aggregate,
@@ -688,33 +709,32 @@ prepare_IgnitionFit <- function(sim) {
   #now we want a table with the climate values of each firePoint at each year
   if (length(climate) > 1) {
     stop("need to fix ignition for multiple climate variables. contact module developers")
-    #for now - will fix later
+    #for now - fix when priority
   } else {
     climate <- raster::stack(climate[[1]])
   }
-   #ignition won't have same years as spread so we do not use names of init objects
-   #The reason is some years may have no significant fires, e.g. 2001 in RIA
-   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
-   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
+  #ignition won't have same years as spread so we do not use names of init objects
+  #The reason is some years may have no significant fires, e.g. 2001 in RIA
+  pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
+  post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
-   sim$fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
-                     years = list(pre2011, post2011),
-                     fuel = list(fuelClasses$year2001, fuelClasses$year2011),
-                     MoreArgs = list(LCC = LCCs,
-                                      fires = sim$ignitionFirePoints,
-                                      climate = climate,
-                                      climVar = names(sim$historicalClimateRasters))) %>%
-   rbindlist(.) %>%
-     as.data.frame(.) #TODO: confirm this
-   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
+  sim$fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
+                                          years = list(pre2011, post2011),
+                                          fuel = list(fuelClasses$year2001, fuelClasses$year2011),
+                                          LCC = list(LCCras$year2001, LCCras$year2011),
+                                          MoreArgs = list(fires = sim$ignitionFirePoints,
+                                                          climate = climate,
+                                                          climVar = names(sim$historicalClimateRasters))) %>%
+    rbindlist(.)
+  #TODO: make assumption that confirms rowSums of fuel classes 1:3 and the landcovers is less than 1
 
-   # recall that fuelClass 1 is actually youngAge.
-   RHS <- names(sim$fireSense_ignitionCovariates) %>%
-     .[!. %in% c("cells", "nFires", names(sim$historicalClimateRasters))] %>%
-     paste0(., ":", names(sim$historicalClimateRasters)) %>%
-     paste(., collapse = " + ")
-   #review formula
-   sim$fireSense_ignitionFormula <- paste("nFires ~", paste(RHS), " - 1")
+  #Formula naming won't work with >1 climate variable, regardless a stop is upstream
+  RHS <- names(sim$fireSense_ignitionCovariates) %>%
+    .[!. %in% c("cells", "nFires", names(sim$historicalClimateRasters))] %>%
+    paste0(., ":", names(sim$historicalClimateRasters)) %>%
+    paste(., collapse = " + ")
+  #review formula
+  sim$fireSense_ignitionFormula <- paste("nFires ~", paste(RHS), " - 1")
 
   return(sim)
 }
