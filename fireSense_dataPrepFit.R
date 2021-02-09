@@ -905,7 +905,7 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("ignitionFirePoints", sim)) {
-    sim$ignitionFirePoints <- Cache(
+    ignitionFirePoints <- Cache(
       fireSenseUtils::getFirePoints_NFDB_V2,
       studyArea = sim$studyArea,
       rasterToMatch = sim$rasterToMatch,
@@ -913,6 +913,8 @@ plotAndMessage <- function(sim) {
       NFDB_pointPath = dPath,
       userTags = c("ignitionFirePoints", P(sim)$.studyAreaName))
     # TODO: what should we set arg redownloadIn to?
+
+    sim$ignitionFirePoints <- ignitionFirePoints[ignitionFirePoints$CAUSE == "L",]
   }
 
   if (!suppliedElsewhere("rstLCC", sim)) {
