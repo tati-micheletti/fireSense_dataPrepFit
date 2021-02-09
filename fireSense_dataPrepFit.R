@@ -39,6 +39,8 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
+    defineParameter(name = "igAggFactor", class = "numeric", default = 25, min = 1, max = NA,
+                    desc = "aggregation factor to use on rasters during ignition prep"),
     defineParameter(name = "minBufferSize", "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
@@ -685,7 +687,7 @@ prepare_IgnitionFit <- function(sim) {
                                   flammableMap = sim$flammableRTM),
                   userTags = c("putBackIntoRaster"))  %>%
     lapply(., FUN = brick) %>%
-    lapply(., FUN = aggregate, fact = 25, fun = mean)
+    lapply(., FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(LCCras) <- c("year2001", "year2011")
 
   fuelClasses <- Map(f = cohortsToFuelClasses,
@@ -697,13 +699,13 @@ prepare_IgnitionFit <- function(sim) {
                                      sppEquivCol = P(sim)$sppEquivCol,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
     lapply(., FUN = raster::brick) %>%
-    lapply(., FUN = aggregate, fact = 25, fun = mean)
+    lapply(., FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- Cache(lapply,
                    sim$historicalClimateRasters,
                    raster::aggregate,
-                   fact = 25,
+                   fact = P(sim)$igAggFactor,
                    fun = mean,
                    userTags = c("climate", "aggregate"))
   #now we want a table with the climate values of each firePoint at each year
