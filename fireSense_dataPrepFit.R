@@ -745,8 +745,8 @@ prepare_IgnitionFit <- function(sim) {
   return(sim)
 }
 
-cleanUpMod <- function(sim){
-  #because prep for ignition/escape/spread isn't necessarily run, clean up here
+cleanUpMod <- function(sim) {
+  ## because prep for ignition/escape/spread isn't necessarily run, clean up here
   mod$climateComponents <- NULL # remove for memory sake
   mod$firePolysForAge <- NULL
   mod$fireSenseVegData <- NULL
@@ -766,7 +766,6 @@ Save <- function(sim) {
 
 ### template for plot events
 plotAndMessage <- function(sim) {
-
   checkPath(file.path(outputPath(sim), "figures"), create = TRUE)
   components <- as.data.table(sim$PCAveg$rotation)
   setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
@@ -902,6 +901,7 @@ plotAndMessage <- function(sim) {
     sim$spreadFirePoints <- sim$spreadFirePoints[min1Fire]
     sim$firePolys <- sim$firePolys[min1Fire]
   }
+
   if (length(sim$firePolys) != length(sim$spreadFirePoints)) {
     stop("mismatched years between firePolys and firePoints")
     #need to implement a better approach that matches each year's IDS
