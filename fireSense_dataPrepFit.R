@@ -212,8 +212,11 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
+
+  if (any(is.na(sim$sppEquiv[["FuelClass"]]))) {
+    stop("All species must have fuelClass defined.")
+  }
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
@@ -224,7 +227,8 @@ Init <- function(sim) {
     message("need numeric FIRE_ID column in fire polygons. Coercing to numeric...")
     #this is true of the current NFBB
     origNames <- names(sim$firePolys)
-    PointsAndPolys <- lapply(names(sim$firePolys), FUN = function(year, polys = sim$firePolys, points = sim$spreadFirePoints) {
+    PointsAndPolys <- lapply(names(sim$firePolys),
+                             function(year, polys = sim$firePolys, points = sim$spreadFirePoints) {
       polys <- polys[[year]]
       points <- points[[year]]
       #ensure matching IDs
@@ -728,7 +732,7 @@ prepare_IgnitionFit <- function(sim) {
                                                           climate = climate,
                                                           climVar = names(sim$historicalClimateRasters))) %>%
     rbindlist(.)
-  #TODO: make assumption that confirms rowSums of fuel classes 1:3 and the landcovers is less than 1
+  ## TODO: make assumption that confirms rowSums of fuel classes 1:3 and the landcovers is less than 1
 
   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
   RHS <- names(sim$fireSense_ignitionCovariates) %>%
