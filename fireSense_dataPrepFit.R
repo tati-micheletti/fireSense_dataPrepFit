@@ -761,8 +761,7 @@ prepare_IgnitionFit <- function(sim) {
   fireSense_ignitionCovariates[, class := as.factor(class1 * 1 + class2 * 2 + class3 * 3 +
                                                           nonForest_highFlam * 4 +
                                                           nonForest_lowFlam * 5)]
-  sim$fireSense_ignitionCovariates <- fireSenseIgnitionCovariates[, .SD, .SDcols = c("cells", "ignition", "MDC", "class")]
-
+  sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates[, .SD, .SDcols = c("cells", "ignition", "MDC", "class")]
 
   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
   sim$fireSense_ignitionFormula <- 'ignition ~ MDC + class + class:MDC - 1' #this is a bad model
