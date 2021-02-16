@@ -39,8 +39,6 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
-    defineParameter(name = "igAggFactor", class = "numeric", default = 25, min = 1, max = NA,
-                    desc = "aggregation factor to use on rasters during ignition prep"),
     defineParameter(name = "minBufferSize", "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
@@ -397,6 +395,8 @@ Init <- function(sim) {
                                  missingLCC = P(sim)$missingLCC)
 
   vegPCAdat <- rbindlist(list(cohorts2001, cohorts2011))
+  mod$vegPCAdat <- vegPCAdat
+  #used for ignition
 
   # rm(cohorts2001, cohorts2011, lcc)
 
@@ -655,6 +655,37 @@ prepare_SpreadFit <- function(sim) {
 
 prepare_IgnitionFit <- function(sim) {
 
+  #correct ignitions that fall on non-flammable pixels
+  #if aggregating, still seems like it is an important step
+  flam <- sim$flammableRTM #so the studyArea name is not added to the extract table
+  names(flam) <- 'flam'
+  igIsFlam <- as.data.table(raster::extract(x = flam,
+                                            y = sim$ignitionFirePoints,
+                                            cellnumbers = TRUE))
+  badIDs <- sim$ignitionFirePoints[igIsFlam$flam == 0 | is.na(igIsFlam$flam),]
+  goodIDs <- sim$ignitionFirePoints[!sim$ignitionFirePoints$FIRE_ID %in% badIDs$FIRE_ID,]
+
+  #buffer the bad points, convert the flammable indices to points, get nearest point
+  tempBuff <- buffer(badIDs, 5000)
+  tempFlam <- mask(flam, tempBuff)
+
+  flammablePix <- 1:ncell(tempFlam) %>%
+    .[tempFlam[] == 1 & !is.na(getValues(tempFlam))]
+  flammablePoints <- xyFromCell(tempFlam, flammablePix) %>%
+    cbind(pixelID = flammablePix, .) %>%
+    as.data.frame(.)
+  flammablePoints <- SpatialPointsDataFrame(coords = flammablePoints[, c("x", "y")],
+                                        data = as.data.frame(flammablePoints[ ,"pixelID"]),
+                                        proj4string = crs(tempFlam)) %>%
+    sf::st_as_sf(.)
+
+  #cannot use nearest point - returns line - rgeos is also slow
+  corrected <- sf::st_nearest_feature(sf::st_as_sf(badIDs), flammablePoints)
+  newIgnitions <- sf::as_Spatial(flammablePoints[corrected,], IDs = badIDs$FIRE_ID)
+  newIgnitions@data <- badIDs@data
+  ignitionFirePoints <- rbind(newIgnitions, goodIDs)
+  rm(tempBuff, flammablePoints, badIDs, goodIDs, igIsFlam, flammablePix, flam) #yeesh
+
   #account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
   forestPix <- sim$landcoverDT[rowSums == 0,]$pixelID
@@ -690,8 +721,7 @@ prepare_IgnitionFit <- function(sim) {
                   MoreArgs = list(lcc = names(sim$nonForestedLCCGroups),
                                   flammableMap = sim$flammableRTM),
                   userTags = c("putBackIntoRaster"))  %>%
-    lapply(., FUN = brick) %>%
-    lapply(., FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
+    lapply(., FUN = brick)
   names(LCCras) <- c("year2001", "year2011")
 
   fuelClasses <- Map(f = cohortsToFuelClasses,
@@ -702,16 +732,10 @@ prepare_IgnitionFit <- function(sim) {
                                      sppEquiv = sim$sppEquiv,
                                      sppEquivCol = P(sim)$sppEquivCol,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
-    lapply(., FUN = raster::brick) %>%
-    lapply(., FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
+    lapply(., FUN = raster::brick)
   names(fuelClasses) <- c("year2001", "year2011")
 
-  climate <- Cache(lapply,
-                   sim$historicalClimateRasters,
-                   raster::aggregate,
-                   fact = P(sim)$igAggFactor,
-                   fun = mean,
-                   userTags = c("climate", "aggregate"))
+  climate <- sim$historicalClimateRasters
   #now we want a table with the climate values of each firePoint at each year
   if (length(climate) > 1) {
     stop("need to fix ignition for multiple climate variables. contact module developers")
@@ -728,19 +752,20 @@ prepare_IgnitionFit <- function(sim) {
                                           years = list(pre2011, post2011),
                                           fuel = list(fuelClasses$year2001, fuelClasses$year2011),
                                           LCC = list(LCCras$year2001, LCCras$year2011),
-                                          MoreArgs = list(fires = sim$ignitionFirePoints,
+                                          MoreArgs = list(fires = ignitionFirePoints,
                                                           climate = climate,
-                                                          climVar = names(sim$historicalClimateRasters))) %>%
+                                                          climVar = names(sim$historicalClimateRasters),
+                                                          flamIndex = sim$landcoverDT$pixelID)) %>%
     rbindlist(.)
-  ## TODO: make assumption that confirms rowSums of fuel classes 1:3 and the landcovers is less than 1
 
+  #there should either be multiple rows for these
   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
   RHS <- names(sim$fireSense_ignitionCovariates) %>%
-    .[!. %in% c("cells", "nFires", names(sim$historicalClimateRasters))] %>%
+    .[!. %in% c("cells", "ignition", names(sim$historicalClimateRasters))] %>%
     paste0(., ":", names(sim$historicalClimateRasters)) %>%
     paste(., collapse = " + ")
   #review formula
-  sim$fireSense_ignitionFormula <- paste("nFires ~", paste(RHS), " - 1")
+  sim$fireSense_ignitionFormula <- paste("ignition ~", paste(RHS), " -1")
 
   return(sim)
 }
@@ -750,6 +775,7 @@ cleanUpMod <- function(sim) {
   mod$climateComponents <- NULL # remove for memory sake
   mod$firePolysForAge <- NULL
   mod$fireSenseVegData <- NULL
+  mod$vegPCAdat <- NULL
 
   return(invisible(sim))
 }
