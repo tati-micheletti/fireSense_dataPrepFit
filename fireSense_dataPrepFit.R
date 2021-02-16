@@ -748,7 +748,7 @@ prepare_IgnitionFit <- function(sim) {
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
-  sim$fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
+  fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
                                           years = list(pre2011, post2011),
                                           fuel = list(fuelClasses$year2001, fuelClasses$year2011),
                                           LCC = list(LCCras$year2001, LCCras$year2011),
@@ -757,15 +757,18 @@ prepare_IgnitionFit <- function(sim) {
                                                           climVar = names(sim$historicalClimateRasters),
                                                           flamIndex = sim$landcoverDT$pixelID)) %>%
     rbindlist(.)
+  #this must done in the function, if we keep the pixel approach, so class isn't hardcoded here...
+  fireSense_ignitionCovariates[, class := as.factor(class1 * 1 + class2 * 2 + class3 * 3 +
+                                                          nonForest_highFlam * 4 +
+                                                          nonForest_lowFlam * 5)]
+  sim$fireSense_ignitionCovariates <- fireSenseIgnitionCovariates[, .SD, .SDcols = c("cells", "ignition", "MDC", "class")]
 
-  #there should either be multiple rows for these
+
   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
-  RHS <- names(sim$fireSense_ignitionCovariates) %>%
-    .[!. %in% c("cells", "ignition", names(sim$historicalClimateRasters))] %>%
-    paste0(., ":", names(sim$historicalClimateRasters)) %>%
-    paste(., collapse = " + ")
-  #review formula
-  sim$fireSense_ignitionFormula <- paste("ignition ~", paste(RHS), " -1")
+  sim$fireSense_ignitionFormula <- 'ignition ~ MDC + class + class:MDC - 1' #this is a bad model
+  #origin is 0,0 because no ignition at MDC apparently
+
+  #sim$fireSense_ignitionFormula <- 'ignition ~ MDC:class1 + class1:pw(MDC, k_class1) etc for piecewise model
 
   return(sim)
 }
