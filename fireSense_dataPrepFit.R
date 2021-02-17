@@ -39,7 +39,9 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
-    defineParameter(name = "minBufferSize", "numeric", 5000, NA, NA,
+    defineParameter(name = "ignitionBufferSize", "numeric", 10000, NA, NA,
+                    desc = "size by which to buffer ignition points, creating the non-ignitions for model"),
+    defineParameter(name = "minBufferSize", class = "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
                     desc = paste("if a pixel is forested but is absent from cohortData, it will be grouped in this class.",
@@ -665,7 +667,9 @@ prepare_IgnitionFit <- function(sim) {
   badIDs <- sim$ignitionFirePoints[igIsFlam$flam == 0 | is.na(igIsFlam$flam),]
   goodIDs <- sim$ignitionFirePoints[!sim$ignitionFirePoints$FIRE_ID %in% badIDs$FIRE_ID,]
 
+  #TODO: put this section in fireSenseUtils and or standardize with spread approach that does same thing
   #buffer the bad points, convert the flammable indices to points, get nearest point
+  #buffer so nearest points does not take forever
   tempBuff <- buffer(badIDs, 5000)
   tempFlam <- mask(flam, tempBuff)
 
@@ -679,12 +683,13 @@ prepare_IgnitionFit <- function(sim) {
                                         proj4string = crs(tempFlam)) %>%
     sf::st_as_sf(.)
 
-  #cannot use nearest point - returns line - rgeos is also slow
+  #cannot use nearest point - returns line - rgeos is also very slow
   corrected <- sf::st_nearest_feature(sf::st_as_sf(badIDs), flammablePoints)
   newIgnitions <- sf::as_Spatial(flammablePoints[corrected,], IDs = badIDs$FIRE_ID)
   newIgnitions@data <- badIDs@data
+  #TODO: assign to sim so ignitionFirePoints = outputs? I think so...
   ignitionFirePoints <- rbind(newIgnitions, goodIDs)
-  rm(tempBuff, flammablePoints, badIDs, goodIDs, igIsFlam, flammablePix, flam) #yeesh
+  rm(tempBuff, flammablePoints, badIDs, goodIDs, igIsFlam, flammablePix, flam)
 
   #account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
@@ -703,6 +708,8 @@ prepare_IgnitionFit <- function(sim) {
   #all(unique(sim$rstLCC[problemPix2001] %in% P(sim)$forestedLCC))
   #all(unique(sim$rstLCC[problemPix2011] %in% P(sim)$forestedLCC))
   #first put landcover into raster stack
+
+
   #non-flammable pixels require zero values for non-forest landcover, not NA
   putBackIntoRaster <- function(lcc, landcoverDT, flammableMap) {
     lccRasters <- list()
@@ -748,6 +755,16 @@ prepare_IgnitionFit <- function(sim) {
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
+
+  #buffer ignitions - need index of buffered points, by year
+  # browser()
+  # bufferedIgnitions <- bufferIgnitionPoints(ignitionPoints = ignitionFirePoints,
+  #                                           rtm = sim$flammableRTM,
+  #                                           bufferSize = P(sim)$ignitionBufferSize)
+
+  #if we subset to buffered points, add list of buffered cells as arg in this function
+
+  #this is joining fuel class, LCC, and climate, subsetting to flamIndex, calculating n of ignitions
   fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
                                           years = list(pre2011, post2011),
                                           fuel = list(fuelClasses$year2001, fuelClasses$year2011),
@@ -757,17 +774,16 @@ prepare_IgnitionFit <- function(sim) {
                                                           climVar = names(sim$historicalClimateRasters),
                                                           flamIndex = sim$landcoverDT$pixelID)) %>%
     rbindlist(.)
-  #this must done in the function, if we keep the pixel approach, so class isn't hardcoded here...
+
+  #TODO remove hardcoded classes
   fireSense_ignitionCovariates[, class := as.factor(class1 * 1 + class2 * 2 + class3 * 3 +
                                                           nonForest_highFlam * 4 +
                                                           nonForest_lowFlam * 5)]
   sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates[, .SD, .SDcols = c("cells", "ignition", "MDC", "class")]
 
   #Formula naming won't work with >1 climate variable, regardless a stop is upstream
-  sim$fireSense_ignitionFormula <- 'ignition ~ MDC + class + class:MDC - 1' #this is a bad model
-  #origin is 0,0 because no ignition at MDC apparently
-
-  #sim$fireSense_ignitionFormula <- 'ignition ~ MDC:class1 + class1:pw(MDC, k_class1) etc for piecewise model
+  sim$fireSense_ignitionFormula <- 'ignition ~ MDC + class + class:MDC'
+  #TODO: fix this when a formula is decided upon
 
   return(sim)
 }
