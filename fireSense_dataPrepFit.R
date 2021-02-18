@@ -39,8 +39,9 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
-    defineParameter(name = "ignitionBufferSize", "numeric", 10000, NA, NA,
-                    desc = "size by which to buffer ignition points, creating the non-ignitions for model"),
+    defineParameter(name = "ignitionBufferSize", "numeric", 3000, NA, NA,
+                    desc = paste("size by which to buffer ignition points, creating the non-ignitions for model.",
+                                 "defaults to 5000, which is ~1 ignition for every... ")),
     defineParameter(name = "minBufferSize", class = "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
@@ -743,11 +744,11 @@ prepare_IgnitionFit <- function(sim) {
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
-  #now we want a table with the climate values of each firePoint at each year
   if (length(climate) > 1) {
     stop("need to fix ignition for multiple climate variables. contact module developers")
     #for now - fix when priority
   } else {
+    climVar <- names(climate)
     climate <- raster::stack(climate[[1]])
   }
   #ignition won't have same years as spread so we do not use names of init objects
@@ -755,35 +756,40 @@ prepare_IgnitionFit <- function(sim) {
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
-
   #buffer ignitions - need index of buffered points, by year
-  # browser()
-  # bufferedIgnitions <- bufferIgnitionPoints(ignitionPoints = ignitionFirePoints,
-  #                                           rtm = sim$flammableRTM,
-  #                                           bufferSize = P(sim)$ignitionBufferSize)
-
-  #if we subset to buffered points, add list of buffered cells as arg in this function
+  bufferedIgnitions <- Cache(bufferIgnitionPoints,
+                             ignitionPoints = ignitionFirePoints,
+                             rtm = sim$flammableRTM,
+                             bufferSize = P(sim)$ignitionBufferSize,
+                             userTags = c("bufferIgnitionPoints"))
 
   #this is joining fuel class, LCC, and climate, subsetting to flamIndex, calculating n of ignitions
   fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
-                                          years = list(pre2011, post2011),
-                                          fuel = list(fuelClasses$year2001, fuelClasses$year2011),
-                                          LCC = list(LCCras$year2001, LCCras$year2011),
-                                          MoreArgs = list(fires = ignitionFirePoints,
-                                                          climate = climate,
-                                                          climVar = names(sim$historicalClimateRasters),
-                                                          flamIndex = sim$landcoverDT$pixelID)) %>%
-    rbindlist(.)
+                                      years = list(pre2011, post2011),
+                                      fuel = list(fuelClasses$year2001, fuelClasses$year2011),
+                                      LCC = list(LCCras$year2001, LCCras$year2011),
+                                      MoreArgs = list(climate = climate,
+                                                      indices = bufferedIgnitions,
+                                                      climVar = climVar #TODO: this is clunky, rethink
+                                      ))
 
-  #TODO remove hardcoded classes
-  fireSense_ignitionCovariates[, class := as.factor(class1 * 1 + class2 * 2 + class3 * 3 +
-                                                          nonForest_highFlam * 4 +
-                                                          nonForest_lowFlam * 5)]
-  sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates[, .SD, .SDcols = c("cells", "ignition", "MDC", "class")]
+  fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
 
-  #Formula naming won't work with >1 climate variable, regardless a stop is upstream
-  sim$fireSense_ignitionFormula <- 'ignition ~ MDC + class + class:MDC'
-  #TODO: fix this when a formula is decided upon
+  #make the fuel classes a single factor column
+  fireSense_ignitionCovariates <- data.table::melt.data.table(fireSense_ignitionCovariates,
+                                      id.vars = c('pixelID', climVar, 'ignited'),
+                                      variable.name = 'class') %>%
+    .[value == 1] %>% #each pixel only has one '1' value
+    .[, value := NULL]
+  #because LCC differs slightly between 2001 and 2011 owing to forested-but-not-in-cohortData,
+  #pixels may have multiple class values...
+  #it is unlikely but possible they are included in this data.table due to the subsetting
+  fireSense_ignitionCovariates[, class := as.factor(class)]
+  fireSense_ignitionCovariates[, ignited := ifelse(ignited, 1, 0)]
+  setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignited", climVar))
+  sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates
+
+  sim$fireSense_ignitionFormula <- paste0('ignition ~ ', climVar, ' + class + class:', climVar)
 
   return(sim)
 }
