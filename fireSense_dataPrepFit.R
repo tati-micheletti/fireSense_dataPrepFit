@@ -11,7 +11,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9038)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9039)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = rbind(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -39,9 +39,8 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
-    defineParameter(name = "ignitionBufferSize", "numeric", 3000, NA, NA,
-                    desc = paste("size by which to buffer ignition points, creating the non-ignitions for model.",
-                                 "defaults to 5000, which is ~1 ignition for every... ")),
+    defineParameter(name = "igAggFactor", "numeric", 25, 1, NA,
+                    desc = "aggregation factor for rasters during ignition prep"),
     defineParameter(name = "minBufferSize", class = "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
@@ -246,7 +245,7 @@ Init <- function(sim) {
     names(sim$spreadFirePoints) <- origNames
   }
 
-  nCores <- ifelse(grepl("windows", Sys.info()[["sysname"]]), 1, length(sim$firePolys))
+  nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$firePolys))
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
@@ -660,37 +659,6 @@ prepare_IgnitionFit <- function(sim) {
 
   #correct ignitions that fall on non-flammable pixels
   #if aggregating, still seems like it is an important step
-  flam <- sim$flammableRTM #so the studyArea name is not added to the extract table
-  names(flam) <- 'flam'
-  igIsFlam <- as.data.table(raster::extract(x = flam,
-                                            y = sim$ignitionFirePoints,
-                                            cellnumbers = TRUE))
-  badIDs <- sim$ignitionFirePoints[igIsFlam$flam == 0 | is.na(igIsFlam$flam),]
-  goodIDs <- sim$ignitionFirePoints[!sim$ignitionFirePoints$FIRE_ID %in% badIDs$FIRE_ID,]
-
-  #TODO: put this section in fireSenseUtils and or standardize with spread approach that does same thing
-  #buffer the bad points, convert the flammable indices to points, get nearest point
-  #buffer so nearest points does not take forever
-  tempBuff <- buffer(badIDs, 5000)
-  tempFlam <- mask(flam, tempBuff)
-
-  flammablePix <- 1:ncell(tempFlam) %>%
-    .[tempFlam[] == 1 & !is.na(getValues(tempFlam))]
-  flammablePoints <- xyFromCell(tempFlam, flammablePix) %>%
-    cbind(pixelID = flammablePix, .) %>%
-    as.data.frame(.)
-  flammablePoints <- SpatialPointsDataFrame(coords = flammablePoints[, c("x", "y")],
-                                        data = as.data.frame(flammablePoints[ ,"pixelID"]),
-                                        proj4string = crs(tempFlam)) %>%
-    sf::st_as_sf(.)
-
-  #cannot use nearest point - returns line - rgeos is also very slow
-  corrected <- sf::st_nearest_feature(sf::st_as_sf(badIDs), flammablePoints)
-  newIgnitions <- sf::as_Spatial(flammablePoints[corrected,], IDs = badIDs$FIRE_ID)
-  newIgnitions@data <- badIDs@data
-  #TODO: assign to sim so ignitionFirePoints = outputs? I think so...
-  ignitionFirePoints <- rbind(newIgnitions, goodIDs)
-  rm(tempBuff, flammablePoints, badIDs, goodIDs, igIsFlam, flammablePix, flam)
 
   #account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
@@ -729,18 +697,20 @@ prepare_IgnitionFit <- function(sim) {
                   MoreArgs = list(lcc = names(sim$nonForestedLCCGroups),
                                   flammableMap = sim$flammableRTM),
                   userTags = c("putBackIntoRaster"))  %>%
-    lapply(., FUN = brick)
+    lapply(., FUN = brick) %>%
+    lapply(., aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(LCCras) <- c("year2001", "year2011")
 
   fuelClasses <- Map(f = cohortsToFuelClasses,
                      cohortData = list(sim$cohortData2001, sim$cohortData2011),
                      yearCohort = list(2001, 2011),
                      pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
-                     MoreArgs = list(flammableMap = sim$flammableRTM,
-                                     sppEquiv = sim$sppEquiv,
+                     MoreArgs = list(sppEquiv = sim$sppEquiv,
                                      sppEquivCol = P(sim)$sppEquivCol,
+                                     flammableMap = sim$flammableRTM,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
-    lapply(., FUN = raster::brick)
+    lapply(., FUN = raster::brick) %>%
+    lapply(., aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
@@ -749,19 +719,13 @@ prepare_IgnitionFit <- function(sim) {
     #for now - fix when priority
   } else {
     climVar <- names(climate)
-    climate <- raster::stack(climate[[1]])
+    climate <- raster::stack(climate[[1]]) %>%
+      aggregate(., fact = P(sim)$igAggFactor, fun = mean)
   }
   #ignition won't have same years as spread so we do not use names of init objects
   #The reason is some years may have no significant fires, e.g. 2001 in RIA
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
-
-  #buffer ignitions - need index of buffered points, by year
-  bufferedIgnitions <- Cache(bufferIgnitionPoints,
-                             ignitionPoints = ignitionFirePoints,
-                             rtm = sim$flammableRTM,
-                             bufferSize = P(sim)$ignitionBufferSize,
-                             userTags = c("bufferIgnitionPoints"))
 
   #this is joining fuel class, LCC, and climate, subsetting to flamIndex, calculating n of ignitions
   fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
@@ -769,27 +733,24 @@ prepare_IgnitionFit <- function(sim) {
                                       fuel = list(fuelClasses$year2001, fuelClasses$year2011),
                                       LCC = list(LCCras$year2001, LCCras$year2011),
                                       MoreArgs = list(climate = climate,
-                                                      indices = bufferedIgnitions,
+                                                      fires = sim$ignitionFirePoints,
                                                       climVar = climVar #TODO: this is clunky, rethink
                                       ))
 
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
 
-  #make the fuel classes a single factor column
-  fireSense_ignitionCovariates <- data.table::melt.data.table(fireSense_ignitionCovariates,
-                                      id.vars = c('pixelID', climVar, 'ignited'),
-                                      variable.name = 'class') %>%
-    .[value == 1] %>% #each pixel only has one '1' value
-    .[, value := NULL]
-  #because LCC differs slightly between 2001 and 2011 owing to forested-but-not-in-cohortData,
-  #pixels may have multiple class values...
-  #it is unlikely but possible they are included in this data.table due to the subsetting
-  fireSense_ignitionCovariates[, class := as.factor(class)]
-  fireSense_ignitionCovariates[, ignited := ifelse(ignited, 1, 0)]
-  setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignited", climVar))
+  setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
+  setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, 'youngAge'))
   sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates
 
-  sim$fireSense_ignitionFormula <- paste0('ignition ~ ', climVar, ' + class + class:', climVar)
+  #build formula
+  #TODO: fix this hardcoding
+
+  sim$fireSense_ignitionFormula <- paste0("ignitions ~ youngAge:MDC + nonForest_highFlam:MDC + ",
+                                          "nonForest_lowFlam:MDC + class2:MDC + class3:MDC + ",
+                                          "youngAge:pw(MDC, k_YA) + nonForest_lowFlam:pw(MDC, k_NFLF) + ,"
+                                          "nonForest_highFlam:pw(MDC, k_NFHF) + class2:pw(MDC, k_class2) + ",
+                                          "class3:pw(MDC, k_class3")
 
   return(sim)
 }
