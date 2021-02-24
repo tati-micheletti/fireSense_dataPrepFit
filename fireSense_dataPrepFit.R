@@ -741,7 +741,7 @@ prepare_IgnitionFit <- function(sim) {
 
   setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
   setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, 'youngAge'))
-  sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates
+  sim$fireSense_ignitionCovariates <- as.data.frame(fireSense_ignitionCovariates) #avoid potential conflict in ignition
 
   #build formula
   #TODO: fix this hardcoding
