@@ -803,7 +803,7 @@ plotAndMessage <- function(sim) {
     geom_tile() +
     scale_fill_gradient2(low = "blue", mid = "white", high = "red") +
     geom_text(data = components, label = components$loading) +
-    ggtitle("loading of components most correlated with fire")
+    ggtitle(paste("loading of components most correlated with fire for", P(sim)$.studyAreaName))
 
   plot(sim$PCAcoeffPlot)
   ggsave(file.path(outputPath(sim), "figures", "PCAcoeffLoadings.png"), sim$PCAcoeffPlot)
