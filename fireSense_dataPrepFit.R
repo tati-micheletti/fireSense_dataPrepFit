@@ -39,7 +39,7 @@ defineModule(sim, list(
     defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
-    defineParameter(name = "igAggFactor", "numeric", 25, 1, NA,
+    defineParameter(name = "igAggFactor", "numeric", 40, 1, NA,
                     desc = "aggregation factor for rasters during ignition prep"),
     defineParameter(name = "minBufferSize", class = "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
