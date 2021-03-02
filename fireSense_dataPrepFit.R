@@ -309,7 +309,7 @@ Init <- function(sim) {
     list(SpatialPoints = fp, FireBuffered = fpoly)
 
   })
-  out22 <- transpose(out22)
+  out22 <- purrr::transpose(out22)
   sim$spreadFirePoints <- out22$SpatialPoints
   fireBufferedListDT <- out22$FireBuffered
 
