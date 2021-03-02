@@ -268,6 +268,7 @@ Init <- function(sim) {
   # Also 2 other problems:
   # 1. Big fire, but ignition is in non-flammable pixels e.g., lake -- bad -- solution -- pick nearest pixel in burned polygon
   # 2. Small fire, ignition in non-flammable pixel, but NO pixel in burned polygon is actually flammable -- remove this from data
+  browser()
   out22 <- Map(fp = sim$spreadFirePoints, fpoly = fireBufferedListDT, function(fp, fpoly) {
     isFlammable <- raster::extract(sim$flammableRTM, fp)
     if (any(!isFlammable)) {
@@ -309,7 +310,7 @@ Init <- function(sim) {
     list(SpatialPoints = fp, FireBuffered = fpoly)
 
   })
-  out22 <- transpose(out22)
+  out22 <- purrr::transpose(out22)
   sim$spreadFirePoints <- out22$SpatialPoints
   fireBufferedListDT <- out22$FireBuffered
 
