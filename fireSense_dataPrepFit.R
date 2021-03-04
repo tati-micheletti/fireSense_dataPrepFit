@@ -214,6 +214,8 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 Init <- function(sim) {
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
+  mod$vegFile <- file.path(outputPath(sim), "fireSense_SpreadFit_veg_coeffs.txt")
+
   if (any(is.na(sim$sppEquiv[["FuelClass"]]))) {
     stop("All species must have fuelClass defined.")
   }
@@ -526,21 +528,33 @@ Init <- function(sim) {
                         data = fireSenseVegData,
                         family = "binomial",
                         na.action = na.exclude)
+
   if (isTRUE(doAssertion)) {
     fb <- rbindlist(fireBufferedListDT)
     vv <- vegPCAdat[fb, on = "pixelID", nomatch = NA]
     set(vv, NULL, c("ids", "year", "pixelID", "pixelGroup", "youngAge"), NULL)
     gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
     ggs <- summary(gg)
-    message("Vegetation model direct: ")
     coefs1 <- ggs$coefficients
     coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
-    messageDF(coefs1)
     pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
     pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
-    message("R2 with vegetation direct: ", round(pseudoR2_vegDirect,3))
-    message("R2 with PCA version: ", round(pseudoR2_vegPCA,3))
+
+    ## print to screen
+    message("Vegetation model direct: ")
+    messageDF(coefs1)
+    message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
+    message("R2 with PCA version: ", round(pseudoR2_vegPCA, 3))
+
+    ## print to file
+    cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
+    cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
+    cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
+        file = mod$vegFile, sep = "\n", append = TRUE)
+    cat(paste("R2 with PCA version: ", round(pseudoR2_vegPCA, 3), "\n"),
+        file = mod$vegFile, sep = "\n", append = TRUE)
   }
+
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
@@ -784,7 +798,11 @@ plotAndMessage <- function(sim) {
   setcolorder(components, neworder = "covariate")
   sim$componentPrintOut <- components[, .SD, .SDcol = c("covariate", sim$vegComponentsToUse)]
 
+  ## to screen
   messageDF(sim$componentPrintOut)
+
+  ## to file
+  cat(capture.output(sim$componentPrintOut), file = mod$vegFile, sep = "\n", append = TRUE)
 
   components <- melt.data.table(data = sim$componentPrintOut,
                                 id.vars = c("covariate"),
