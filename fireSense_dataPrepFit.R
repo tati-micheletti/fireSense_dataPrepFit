@@ -753,7 +753,16 @@ prepare_IgnitionFit <- function(sim) {
 
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
 
+  #remove any pixels that are 0 for all classes
+  fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
+                                                                          c("MDC", "cells", "ignitions"))]
+
+  fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
+  set(fireSense_ignitionCovariates, NULL, "coverSums", NULL)
+
+  #rename cells to pixelID - though aggregated raster is not saved
   setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
+
   setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, 'youngAge'))
   sim$fireSense_ignitionCovariates <- as.data.frame(fireSense_ignitionCovariates) #avoid potential conflict in ignition
 
