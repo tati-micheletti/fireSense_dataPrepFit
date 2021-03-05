@@ -11,9 +11,10 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
+                  "PredictiveEcology/SpaDES.core@development (>=1.0.6.9016)",
                   "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9039)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
-  parameters = rbind(
+  parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter(".plotInitialTime", "numeric", NA, NA, NA,
                     "Describes the simulation time at which the first plot event should occur."),
@@ -28,9 +29,9 @@ defineModule(sim, list(
     defineParameter(".useCache", "logical", FALSE, NA, NA,
                     paste("Should this entire module be run with caching activated? This is intended",
                           "for data-type modules, where stochasticity and time are not relevant")),
-    defineParameter("areaMultiplier", class = "numeric", fireSenseUtils::multiplier, NA, NA,
+    defineParameter("areaMultiplier", class = c("numeric", "function"), fireSenseUtils::multiplier, NA, NA,
                     desc = paste("Either a scalar that will buffer areaMultiplier * fireSize or a function",
-                    "of fireSize. Default is 2. See fireSenseUtils::bufferToArea for help")),
+                                 "of fireSize. Default is 2. See fireSenseUtils::bufferToArea for help")),
     defineParameter("cutoffForYoungAge", class = "numeric", 15, NA, NA,
                     desc = paste("Age at and below which pixels are considered 'young' --> young <- age <= cutoffForYoungAge")),
     defineParameter(name = "fireYears", class = "integer", default = 2001:2019,
@@ -85,8 +86,8 @@ defineModule(sim, list(
     expectsInput(objectName = "historicalClimateRasters", objectClass = "list", sourceURL = NA,
                  desc = "list of historical climate variables in raster stack form, name according to variable"),
     expectsInput(objectName = "ignitionFirePoints", objectClass = "list", sourceURL = NA,
-                  desc = paste("list of spatialPolygonDataFrame objects representing annual ignition locations.",
-                               "This includes all fires regardless of size")),
+                 desc = paste("list of spatialPolygonDataFrame objects representing annual ignition locations.",
+                              "This includes all fires regardless of size")),
     expectsInput(objectName = "nonForestedLCCGroups", objectClass = "list",
                  desc = paste("a named list of non-forested landcover groups",
                               "e.g. list('wetland' = c(19, 23, 32))",
@@ -458,8 +459,7 @@ Init <- function(sim) {
   #need it in one dt for PCA, but it is less efficient so we convert back to list of annual dts
   climatePCAdat <- Cache(climateRasterToDataTable,
                          historicalClimateRasters = sim$historicalClimateRasters,
-                         Index = flammableIndex,
-                         userTags = c("climateRasterToDataTable"))
+                         Index = flammableIndex, userTags = c("climateRasterToDataTable"))
   rm(flammableIndex)
 
   if (length(climatePCAdat) > 1) {
@@ -670,7 +670,6 @@ prepare_SpreadFit <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
-
   #correct ignitions that fall on non-flammable pixels
   #if aggregating, still seems like it is an important step
 
