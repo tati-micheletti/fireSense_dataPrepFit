@@ -12,7 +12,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>=1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9039)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9049)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -120,6 +120,8 @@ defineModule(sim, list(
                   desc = "list of spatialPolygonDataFrame objects representing annual fires"),
     createsOutput(objectName = "fireSense_annualSpreadFitCovariates", objectClass = "list",
                   desc = "list of tables with climate PCA components, burn status, polyID, and pixelID"),
+    createsOutput(objectName = "fireSense_escapeCovariates", objectClass = "data.table",
+                  desc = "ignition covariates with added column of escapes"),
     createsOutput(objectName = "fireSense_ignitionCovariates", objectClass = "data.table",
                   desc = "table of aggregated ignition covariates with annual ignitions"),
     createsOutput(objectName = "fireSense_ignitionFormula", objectClass = "character",
@@ -189,7 +191,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       sim <- prepare_IgnitionFit(sim)
     },
     prepEscapeFitData = {
-      #fill as needed
+      sim <- prepare_EscapeFit(sim)
     },
     prepSpreadFitData = {
       sim <- prepare_SpreadFit(sim)
@@ -754,7 +756,7 @@ prepare_IgnitionFit <- function(sim) {
 
   #remove any pixels that are 0 for all classes
   fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
-                                                                          c("MDC", "cells", "ignitions"))]
+                                                                          c("MDC", "cells", "ignitions", "year"))]
 
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   set(fireSense_ignitionCovariates, NULL, "coverSums", NULL)
@@ -774,7 +776,39 @@ prepare_IgnitionFit <- function(sim) {
                                           "nonForest_highFlam:pw(MDC, k_NFHF) + class2:pw(MDC, k_class2) + ",
                                           "class3:pw(MDC, k_class3) - 1")
 
-  return(sim)
+  return(invisible(sim))
+}
+
+prepare_EscapeFit <- function(sim) {
+
+  if (is.null(sim$fireSense_ignitionCovariates)) {
+    #the datasets are essentially the same, with one column difference
+    stop("Please include ignitionFit in parameter 'whichModulesToPrepare' if running EscapeFit")
+  }
+
+  escapeThreshHa <- prod(res(sim$flammableRTM))/10000
+  escapes <- sim$ignitionFirePoints[sim$ignitionFirePoints$SIZE_HA > escapeThreshHa,]
+
+  #make a template aggregated raster - values are irrelevant, only need pixelID
+  aggregatedRas <- aggregate(sim$historicalClimateRasters[[1]][[1]],
+                             fact = P(sim)$igAggFactor, fun = mean)
+
+  escapeDT <- raster::extract(aggregatedRas, escapes, cellnumber = TRUE) %>%
+    as.data.table(.) %>%
+    .[, year := escapes$YEAR] %>%
+    .[, .(year, cells)] %>%
+    .[, .(.N), .(year, cells)] %>%
+    setnames(., c("N", "cells"), c("escapes", "pixelID"))
+
+  escapeDT <- escapeDT[sim$fireSense_ignitionCovariates, on = c("pixelID", "year")]
+  escapeDT[is.na(escapes), escapes := 0]
+
+  sim$fireSense_escapeCovariates <- escapeDT
+
+  #TODO: fix hardcoded formula
+
+
+  return(invisible(sim))
 }
 
 cleanUpMod <- function(sim) {
