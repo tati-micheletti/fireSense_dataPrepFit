@@ -114,6 +114,11 @@ defineModule(sim, list(
   outputObjects = bindrows(
     createsOutput(objectName = "climateComponentsToUse", objectClass = "character",
                   desc = "names of the climate components or variables needed for FS models"),
+    createsOutput(objectName = "coefficientPrintOut", "data.table",
+                  desc = paste("Coefficients from the logit model")),
+    createsOutput(objectName = "componentPrintOut", "data.table",
+                  desc = paste("A data.table showing the PCA axes and their loadings with the different ",
+                               "covariates, e.g., fuel, TPI, HLI, etc.")),
     createsOutput(objectName = "fireBufferedListDT", objectClass = "list",
                   desc = "list of data.tables with fire id, pixelID, and buffer status"),
     createsOutput(objectName = "firePolys", objectClass = "list",
@@ -122,6 +127,8 @@ defineModule(sim, list(
                   desc = "list of tables with climate PCA components, burn status, polyID, and pixelID"),
     createsOutput(objectName = "fireSense_escapeCovariates", objectClass = "data.table",
                   desc = "ignition covariates with added column of escapes"),
+    createsOutput(objectName = "fireSense_escapeFormula", objectClass = "character",
+                  desc = "formula for escape, using fuel classes and landcover, as character"),
     createsOutput(objectName = "fireSense_ignitionCovariates", objectClass = "data.table",
                   desc = "table of aggregated ignition covariates with annual ignitions"),
     createsOutput(objectName = "fireSense_ignitionFormula", objectClass = "character",
@@ -132,11 +139,6 @@ defineModule(sim, list(
                   desc = "formula for spread, using climate and terrain components, as character"),
     # createsOutput(objectName = "fireSense_spreadLogitModel", objectClass = "glm",
     #               desc = "GLM with burn as dependent variable and PCA components as covariates"),
-    createsOutput(objectName = "coefficientPrintOut", "data.table",
-                  desc = paste("Coefficients from the logit model")),
-    createsOutput(objectName = "componentPrintOut", "data.table",
-                  desc = paste("A data.table showing the PCA axes and their loadings with the different ",
-                               "covariates, e.g., fuel, TPI, HLI, etc.")),
     createsOutput(objectName = "landcoverDT", "data.table",
                   desc = paste("data.table with pixelID and relevant landcover classes",
                                "that is used by predict functions")),
@@ -806,7 +808,9 @@ prepare_EscapeFit <- function(sim) {
   sim$fireSense_escapeCovariates <- escapeDT
 
   #TODO: fix hardcoded formula
-
+  sim$fireSense_escapeFormula <- paste0("cbind(escapes, ignitions - escapes) ~ youngAge + ",
+                                        "class2 + class3 + nonForest_lowFlam +",
+                                        "nonForest_highFlam + MDC - 1")
 
   return(invisible(sim))
 }
