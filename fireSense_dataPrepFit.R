@@ -807,7 +807,7 @@ prepare_EscapeFit <- function(sim) {
 
   sim$fireSense_escapeCovariates <- escapeDT
 
-  #TODO: fix hardcoded formula
+  ## TODO: fix hardcoded formula
   sim$fireSense_escapeFormula <- paste0("cbind(escapes, ignitions - escapes) ~ youngAge + ",
                                         "class2 + class3 + nonForest_lowFlam +",
                                         "nonForest_highFlam + MDC - 1")
