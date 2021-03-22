@@ -314,7 +314,6 @@ Init <- function(sim) {
         fp <- rbind(fp, newSp)
 
       fpoly <- fpoly[!fpoly$ids %in% rmFireIDs,]
-
     }
     list(SpatialPoints = fp, FireBuffered = fpoly)
 
