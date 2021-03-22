@@ -943,8 +943,7 @@ plotAndMessage <- function(sim) {
         ras <- x
         ras$ID <- 1:NROW(ras)
         centCoords <- rgeos::gCentroid(ras, byid = TRUE)
-        cent <- SpatialPointsDataFrame(centCoords,
-                                       as.data.frame(ras))
+        cent <- SpatialPointsDataFrame(centCoords, as.data.frame(ras))
         return(cent)
       }
     }
@@ -990,8 +989,8 @@ plotAndMessage <- function(sim) {
       rasterToMatch = sim$rasterToMatch,
       years = P(sim)$fireYears,
       NFDB_pointPath = dPath,
-      userTags = c("ignitionFirePoints", P(sim)$.studyAreaName))
-    # TODO: what should we set arg redownloadIn to?
+      userTags = c("ignitionFirePoints", P(sim)$.studyAreaName)
+    ) ## TODO: what should we set arg redownloadIn to?
 
     sim$ignitionFirePoints <- ignitionFirePoints[ignitionFirePoints$CAUSE == "L",]
   }
