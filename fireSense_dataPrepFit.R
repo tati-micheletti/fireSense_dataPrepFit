@@ -12,7 +12,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>=1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9049)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9050)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -989,7 +989,8 @@ plotAndMessage <- function(sim) {
       rasterToMatch = sim$rasterToMatch,
       years = P(sim)$fireYears,
       NFDB_pointPath = dPath,
-      userTags = c("ignitionFirePoints", P(sim)$.studyAreaName)
+      userTags = c("ignitionFirePoints", P(sim)$.studyAreaName),
+      plot = !is.na(P(sim)$.plotInitialTime)
     ) ## TODO: what should we set arg redownloadIn to?
 
     sim$ignitionFirePoints <- ignitionFirePoints[ignitionFirePoints$CAUSE == "L",]
