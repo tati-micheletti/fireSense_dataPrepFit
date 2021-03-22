@@ -323,7 +323,6 @@ Init <- function(sim) {
   sim$spreadFirePoints <- out22$SpatialPoints
   fireBufferedListDT <- out22$FireBuffered
 
-
   ####prep terrain for PCA####
   # pre-name the X for the lapply --> it keeps the names correctly
   layers <- seq(nlayers(sim$terrainCovariates))
@@ -388,25 +387,25 @@ Init <- function(sim) {
     do.call(rbind, .)
 
   origDTThreads <- data.table::setDTthreads(2)
-  cohorts2001 <-  Cache(castCohortData, cohortData = sim$cohortData2001,
-                                 pixelGroupMap = sim$pixelGroupMap2001,
-                                 year = 2001,
-                                 ageMap = NULL,
-                        cutoffForYoungAge = P(sim)$cutoffForYoungAge,
-                                 lcc = sim$landcoverDT,
-                                 terrainDT = sim$terrainDT,
-                                 missingLCC = P(sim)$missingLCC)
-
-  cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
-                                 pixelGroupMap = sim$pixelGroupMap2011,
-                                 year = 2011,
-                        cutoffForYoungAge = P(sim)$cutoffForYoungAge,
+  cohorts2001 <-  Cache(castCohortData,
+                        cohortData = sim$cohortData2001,
+                        pixelGroupMap = sim$pixelGroupMap2001,
+                        year = 2001,
                         ageMap = NULL,
-                                 lcc = sim$landcoverDT,
-                                 terrainDT = sim$terrainDT,
-                                 missingLCC = P(sim)$missingLCC)
+                        cutoffForYoungAge = P(sim)$cutoffForYoungAge,
+                        lcc = sim$landcoverDT,
+                        terrainDT = sim$terrainDT,
+                        missingLCC = P(sim)$missingLCC)
+    cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
+                          pixelGroupMap = sim$pixelGroupMap2011,
+                          year = 2011,
+                          cutoffForYoungAge = P(sim)$cutoffForYoungAge,
+                          ageMap = NULL,
+                          lcc = sim$landcoverDT,
+                          terrainDT = sim$terrainDT,
+                          missingLCC = P(sim)$missingLCC)
 
-  vegPCAdat <- rbindlist(list(cohorts2001, cohorts2011))
+  vegPCAdat <- rbindlist(list(cohorts2001, cohorts2011), use.names = TRUE)
   mod$vegPCAdat <- vegPCAdat
   #used for ignition
 
