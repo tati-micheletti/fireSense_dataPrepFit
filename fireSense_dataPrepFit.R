@@ -869,7 +869,9 @@ plotAndMessage <- function(sim) {
     geom_text(data = components, label = components$loading) +
     ggtitle(paste("loading of components most correlated with fire for", P(sim)$.studyAreaName))
 
-  plot(sim$PCAcoeffPlot)
+  if (!is.na(P(sim)$.plotInitialTime)) {
+    plot(sim$PCAcoeffPlot)
+  }
   ggsave(file.path(outputPath(sim), "figures", "PCAcoeffLoadings.png"), sim$PCAcoeffPlot)
 
   return(invisible(sim))
