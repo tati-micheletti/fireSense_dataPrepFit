@@ -783,7 +783,6 @@ prepare_IgnitionFit <- function(sim) {
 }
 
 prepare_EscapeFit <- function(sim) {
-
   if (is.null(sim$fireSense_ignitionCovariates)) {
     #the datasets are essentially the same, with one column difference
     stop("Please include ignitionFit in parameter 'whichModulesToPrepare' if running EscapeFit")
