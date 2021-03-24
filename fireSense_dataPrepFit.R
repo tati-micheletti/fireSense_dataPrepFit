@@ -219,7 +219,8 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 Init <- function(sim) {
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
-  mod$vegFile <- file.path(outputPath(sim), "fireSense_SpreadFit_veg_coeffs.txt")
+  mod$vegFile <- file.path(outputPath(sim), paste0("fireSense_SpreadFit_veg_coeffs_",
+                                                   P(sim)$.studyAreaName, ".txt"))
 
   if (any(is.na(sim$sppEquiv[["FuelClass"]]))) {
     stop("All species must have fuelClass defined.")
@@ -872,7 +873,8 @@ plotAndMessage <- function(sim) {
   if (!is.na(P(sim)$.plotInitialTime)) {
     plot(sim$PCAcoeffPlot)
   }
-  ggsave(file.path(outputPath(sim), "figures", "PCAcoeffLoadings.png"), sim$PCAcoeffPlot)
+  ggsave(file.path(outputPath(sim), "figures", paste0("PCAcoeffLoadings_", P(sim)$.studyAreaName, ".png")),
+         sim$PCAcoeffPlot)
 
   return(invisible(sim))
 }
