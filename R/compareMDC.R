@@ -13,19 +13,22 @@ Require(c("raster", "data.table", "ggplot2"))
 #' @importFrom ggplot2 aes ggplot geom_smooth geom_line
 #' @importFrom stats median
 #' @importFrom raster ncell nlayers getValues
+#'
+#' @example
+#' compareMDC(historicalMDC = simOutPreamble$historicalClimateRasters$MDC
+#'            projectedMDC = simOutPreamble$projectedClimateRasters$MDC,
+#'            flammableRTM = fSsimDataPrep$flammableRTM)
+#'
 compareMDC <- function(historicalMDC, projectedMDC, flammableRTM = NULL) {
-
-  valfun <- function(x, flamMap = NULL){
-
+  valfun <- function(x, flamMap = NULL) {
     years <- 1:nlayers(x)
-    if (!is.null(flamMap)){
+    if (!is.null(flamMap)) {
       isFlam <- getValues(flamMap)
       flamMap <- c(1:ncell(flamMap))[!is.na(isFlam) & isFlam > 0]
     }
     medVal <- lapply(years, FUN = function(year, index = flamMap) {
-      dt <- data.table("year" = year,
-                       "MDC" = getValues(x[[year]]))
-      if (!is.null(index)){
+      dt <- data.table("year" = year, "MDC" = getValues(x[[year]]))
+      if (!is.null(index)) {
         dt <- dt[index]
       }
       dt <- dt[, .(MDC = median(MDC, na.rm = TRUE)), .(year)]
@@ -45,7 +48,3 @@ compareMDC <- function(historicalMDC, projectedMDC, flammableRTM = NULL) {
   MDC <- rbind(hist, proj)
   ggplot(data = MDC, aes(y = MDC, x = year, color = stat)) + geom_line() + geom_smooth()
 }
-
-compareMDC(historicalMDC = simOutPreamble$historicalClimateRasters$MDC,
-           projectedMDC = simOutPreamble$projectedClimateRasters$MDC,
-           flammableRTM = fSsimDataPrep$flammableRTM)
