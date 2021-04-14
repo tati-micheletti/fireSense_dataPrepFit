@@ -142,8 +142,10 @@ defineModule(sim, list(
     createsOutput(objectName = "landcoverDT", "data.table",
                   desc = paste("data.table with pixelID and relevant landcover classes",
                                "that is used by predict functions")),
-    createsOutput(objectName = "nonForest_timeSinceDisturbance", objectClass = "RasterLayer",
-                  desc = "time since burn for non-forested pixels"),
+    createsOutput(objectName = "nonForest_timeSinceDisturbance2001", objectClass = "RasterLayer",
+                  desc = "time since burn for non-forested pixels in 2001"),
+    createsOutput(objectName = "nonForest_timeSinceDisturbance2011", objectClass = "RasterLayer",
+                  desc = "time since burn for non-forested pixels in 2011"),
     createsOutput(objectName = "PCAclimate", objectClass = "prcomp",
                   desc = "PCA model for climate covariates, needed for fireSensePredict"),
     createsOutput(objectName = "PCAcoeffPlot", objectClass = "gglot",
@@ -667,7 +669,9 @@ prepare_SpreadFit <- function(sim) {
     stop("This module is assuming that the start year is 2011. ",
          "It must start in 2011, or some of the assumptions would be incorrect")
   }
-  sim$nonForest_timeSinceDisturbance <- TSD2011 #the default starting year for fireSense_dataPrepPredict
+  sim$nonForest_timeSinceDisturbance2011 <- TSD2011
+  sim$nonForest_timeSinceDisturbance2001 <- TSD2001
+
   sim$fireSense_nonAnnualSpreadFitCovariates <- list(nonAnnualPre2011, nonAnnualPost2011)
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
                                                          paste(names(post2011Indices), collapse = "_"))
