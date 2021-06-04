@@ -37,7 +37,7 @@ defineModule(sim, list(
     defineParameter(name = "fireYears", class = "integer", default = 2001:2019,
                     desc = "A numeric vector indicating which years should be extracted
                     from the fire databases to use for fitting"),
-    defineParameter(name = "forestedLCC", class = "numeric", default = c(1:15, 20, 32, 34, 35), NA, NA,
+    defineParameter(name = "forestedLCC", class = "numeric", default = c(1:6), NA, NA,
                     desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
                                   "These classes will be excluded from the PCA")),
     defineParameter(name = "igAggFactor", "numeric", 40, 1, NA,
@@ -47,7 +47,7 @@ defineModule(sim, list(
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
                     desc = paste("if a pixel is forested but is absent from cohortData, it will be grouped in this class.",
                                  "Must be one of the names in sim$nonForestedLCCGroups")),
-    defineParameter(name = "nonflammableLCC", class = "numeric", c(0, 25, 30, 33, 36, 37, 38, 39), NA, NA,
+    defineParameter(name = "nonflammableLCC", class = "numeric", c(13, 16, 17, 18, 19), NA, NA,
                     desc = "non-flammable LCC in sim$rstLCC"),
     defineParameter(name = "PCAcomponentsForClimate", "numeric", 1, 1, NA,
                     desc = "number of PCA components to include from climate variables"),
@@ -1006,6 +1006,7 @@ plotAndMessage <- function(sim) {
 
   if (!suppliedElsewhere("rstLCC", sim)) {
     sim$rstLCC <- prepInputsLCC(destinationPath = dPath,
+                                year = 2010,
                                 studyArea = sim$studyArea,
                                 filename2 = file.path(dPath, paste0("rstLCC_",
                                                                     P(sim)$.studyAreaName,
@@ -1037,11 +1038,8 @@ plotAndMessage <- function(sim) {
 
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
     sim$nonForestedLCCGroups <- list(
-      "nonForest_highFlam" = c(16, 17, 18, 19, 22),
-      "nonForest_lowFlam" = c(21, 23, 24, 26, 27, 28, 29, 31)
-      #0, 25, 30, 33, 36, 37, 38, 39 non flammable
-      # 1:15, 20, 32, 34, 35 forest
-
+      "nonForest_highFlam" = c(8, 10, 14),#shrubland, grassland, wetland
+      "nonForest_lowFlam" = c(11, 12, 15) #shrub-lichen-moss + cropland. 2 barren classes are nonflam
     )
   }
 
