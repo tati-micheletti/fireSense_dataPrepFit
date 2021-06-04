@@ -137,6 +137,9 @@ defineModule(sim, list(
                   desc = "list of two tables with veg PCA components, burn status, polyID, and pixelID"),
     createsOutput(objectName = "fireSense_spreadFormula", objectClass = "character",
                   desc = "formula for spread, using climate and terrain components, as character"),
+    createsOutput(objectName = "ignitionFitRTM", objectClass = "RasterLayer",
+                  desc = paste("A (template) raster with information with regards to the spatial resolution and geographical extent of",
+                               "fireSense_ignitionCovariates. Used to pass this information onto fireSense_ignitionFitted",                                                         "Needs to have number of non-NA cells as attribute (ignitionFitRTM@data@attributes$nonNAs)")),
     # createsOutput(objectName = "fireSense_spreadLogitModel", objectClass = "glm",
     #               desc = "GLM with burn as dependent variable and PCA components as covariates"),
     createsOutput(objectName = "landcoverDT", "data.table",
@@ -771,9 +774,14 @@ prepare_IgnitionFit <- function(sim) {
 
   #rename cells to pixelID - though aggregated raster is not saved
   setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
-
+  fireSense_ignitionCovariates[, year := as.numeric(year)]
   setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, 'youngAge'))
   sim$fireSense_ignitionCovariates <- as.data.frame(fireSense_ignitionCovariates) #avoid potential conflict in ignition
+
+
+  #make new ignition object, ignitionFitRTM
+  sim$ignitionFitRTM <- raster(fuelClasses$year2001)
+  sim$ignitionFitRTM@data@attributes$nonNAs <- nrow(sim$fireSense_ignitionCovariates)
 
   #build formula
   #TODO: fix this hardcoding
@@ -807,6 +815,7 @@ prepare_EscapeFit <- function(sim) {
     .[, .(.N), .(year, cells)] %>%
     setnames(., c("N", "cells"), c("escapes", "pixelID"))
 
+  escapeDT[, year := as.numeric(year)]
   escapeDT <- escapeDT[sim$fireSense_ignitionCovariates, on = c("pixelID", "year")]
   escapeDT[is.na(escapes), escapes := 0]
 
