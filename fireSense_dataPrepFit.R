@@ -901,9 +901,10 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
-    sim$rasterToMatch <- prepInputsLCC(destinationPath = dPath,
-                                       studyArea = sim$studyArea,
-                                       useCache = TRUE)
+    sim$rasterToMatch <- LandR::prepInputsLCC(year = 2005, ## TODO: use 2010
+                                              destinationPath = dPath,
+                                              studyArea = sim$studyArea,
+                                              useCache = TRUE)
   }
 
   if (!all(suppliedElsewhere("cohortData2011", sim),
@@ -1014,13 +1015,12 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("rstLCC", sim)) {
-    sim$rstLCC <- prepInputsLCC(destinationPath = dPath,
-                                year = 2010,
-                                studyArea = sim$studyArea,
-                                filename2 = file.path(dPath, paste0("rstLCC_",
-                                                                    P(sim)$.studyAreaName,
-                                                                    ".tif")),
-                                useCache = TRUE)
+    sim$rstLCC <- prepInputsLCC(
+      year = 2010,
+      destinationPath = dPath,
+      studyArea = sim$studyArea,
+      filename2 = file.path(dPath, paste0("rstLCC_", P(sim)$.studyAreaName, ".tif")),
+      useCache = TRUE)
   }
 
   if (!suppliedElsewhere("historicalClimateRasters", sim)) {
