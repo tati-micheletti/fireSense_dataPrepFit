@@ -57,7 +57,7 @@ jobs:
 
       - name: Install module package dependencies
         run: |
-          pkgs <- SpaDES.core::packages(modules = "fireSense_dataPrepFit", paths = "..")
+          pkgs <- SpaDES.core::packages(modules = "fireSense_dataPrepFit", paths = "..")[[1]]
           Require::Require(pkgs)
         shell: Rscript {0}
 
