@@ -451,8 +451,9 @@ Init <- function(sim) {
   }
 
   # rm(vegList, vegPCAdat) # don't delete things because they are helpful for debugging
+  #if there are fewer components than parameter, take them all
+  components <- paste0("PC", 1:min(as.integer(P(sim)$PCAcomponentsForVeg), length(sim$PCAveg$scale)))
 
-  components <- paste0("PC", 1:P(sim)$PCAcomponentsForVeg)
   removeCols <- setdiff(colnames(vegComponents), c(components, "pixelID", "year", "youngAge"))
   if (length(removeCols))
     set(vegComponents, NULL, removeCols, NULL)
