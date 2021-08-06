@@ -2,8 +2,9 @@ defineModule(sim, list(
   name = "fireSense_dataPrepFit",
   description = "",
   keywords = "",
-  authors = structure(list(list(given = c("Ian"), family = "Eddy", role = c("aut", "cre"),
-                                email = "ian.eddy@canada.ca", comment = NULL)), class = "person"),
+  authors = c(
+    person(c("Ian"), "Eddy", role = c("aut", "cre"), email = "ian.eddy@canada.ca")
+  ),
   childModules = character(0),
   version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9001"),
   timeframe = as.POSIXlt(c(NA, NA)),
@@ -139,7 +140,8 @@ defineModule(sim, list(
                   desc = "formula for spread, using climate and terrain components, as character"),
     createsOutput(objectName = "ignitionFitRTM", objectClass = "RasterLayer",
                   desc = paste("A (template) raster with information with regards to the spatial resolution and geographical extent of",
-                               "fireSense_ignitionCovariates. Used to pass this information onto fireSense_ignitionFitted",                                                         "Needs to have number of non-NA cells as attribute (ignitionFitRTM@data@attributes$nonNAs)")),
+                               "fireSense_ignitionCovariates. Used to pass this information onto fireSense_ignitionFitted",
+                               "Needs to have number of non-NA cells as attribute (ignitionFitRTM@data@attributes$nonNAs)")),
     # createsOutput(objectName = "fireSense_spreadLogitModel", objectClass = "glm",
     #               desc = "GLM with burn as dependent variable and PCA components as covariates"),
     createsOutput(objectName = "landcoverDT", "data.table",
