@@ -3,7 +3,8 @@ defineModule(sim, list(
   description = "",
   keywords = "",
   authors = c(
-    person(c("Ian"), "Eddy", role = c("aut", "cre"), email = "ian.eddy@canada.ca")
+    person(c("Ian"), "Eddy", role = c("aut", "cre"), email = "ian.eddy@canada.ca"),
+    person(c("Alex", "M"), "Chubaty", role = c("ctb"), email = "achubaty@for-cast.ca")
   ),
   childModules = character(0),
   version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9001"),
@@ -26,21 +27,25 @@ defineModule(sim, list(
     defineParameter(".saveInterval", "numeric", NA, NA, NA,
                     "This describes the simulation time interval between save events."),
     defineParameter(".studyAreaName", "character", NULL, NA, NA,
-                    desc = "studyArea name that will be appended to file-backed rasters"),
+                    "studyArea name that will be appended to file-backed rasters"),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
                     paste("Should this entire module be run with caching activated? This is intended",
                           "for data-type modules, where stochasticity and time are not relevant")),
-    defineParameter("areaMultiplier", class = c("numeric", "function"), fireSenseUtils::multiplier, NA, NA,
-                    desc = paste("Either a scalar that will buffer areaMultiplier * fireSize or a function",
-                                 "of fireSize. Default is 2. See fireSenseUtils::bufferToArea for help")),
+    defineParameter("areaMultiplier", c("numeric", "function"), fireSenseUtils::multiplier, NA, NA,
+                    paste("Either a scalar that will buffer areaMultiplier * fireSize or a function",
+                          "of fireSize. Default is 2. See fireSenseUtils::bufferToArea for help")),
+    defineParameter("climateGCM", "numeric", "13GCMs_ensemble", NA, NA,
+                    paste("Global Circulation Model to use for climate projections:",
+                          "currently '13GCMs_ensemble' or 'CanESM5'.")),
+    defineParameter("climateSSP", "numeric", 370, NA, NA,
+                    "SSP emissions scenario for `climateGCM`: one of 245, 370, or 585."),
     defineParameter("cutoffForYoungAge", class = "numeric", 15, NA, NA,
-                    desc = paste("Age at and below which pixels are considered 'young' --> young <- age <= cutoffForYoungAge")),
-    defineParameter(name = "fireYears", class = "integer", default = 2001:2019,
-                    desc = "A numeric vector indicating which years should be extracted
-                    from the fire databases to use for fitting"),
-    defineParameter(name = "forestedLCC", class = "numeric", default = c(1:6), NA, NA,
-                    desc = paste0("forested land cover classes. If using LCC 2005, this should also include burn classes 34 and 35.",
-                                  "These classes will be excluded from the PCA")),
+                    "Age at and below which pixels are considered 'young' --> young <- age <= cutoffForYoungAge"),
+    defineParameter("fireYears", "integer", 2001:2019, NA, NA,
+                    paste("A numeric vector indicating which years should be extracted",
+                          "from the fire databases to use for fitting")),
+    defineParameter("forestedLCC", "numeric", c(1:6), NA, NA,
+                    "Forested land cover classes. These classes will be excluded from the PCA."),
     defineParameter(name = "igAggFactor", "numeric", 40, 1, NA,
                     desc = "aggregation factor for rasters during ignition prep"),
     defineParameter(name = "minBufferSize", class = "numeric", 5000, NA, NA,
@@ -226,8 +231,9 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 Init <- function(sim) {
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
-  mod$vegFile <- file.path(outputPath(sim), paste0("fireSense_SpreadFit_veg_coeffs_",
-                                                   P(sim)$.studyAreaName, ".txt"))
+  mod$vegFile <- file.path(outputPath(sim),
+                           paste0(paste("fireSense_SpreadFit_veg_coeffs", P(sim)$.studyAreaName,
+                                        P(sim)$climateGCM, P(sim)$climateSSP, sep = "_"), ".txt"))
 
   if (any(is.na(sim$sppEquiv[["FuelClass"]]))) {
     stop("All species must have fuelClass defined.")
