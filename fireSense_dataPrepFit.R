@@ -761,6 +761,7 @@ prepare_IgnitionFit <- function(sim) {
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
+  compareRaster(fuelClasses$year2001, fuelClasses$year2011, LCCras$year2001, LCCras$year2011, climate)
   #this is joining fuel class, LCC, and climate, subsetting to flamIndex, calculating n of ignitions
   fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
                                       years = list(pre2011, post2011),
