@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>=1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.4.9052)",
+                  "PredictiveEcology/fireSenseUtils@development (>=0.0.5)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -336,59 +336,15 @@ Init <- function(sim) {
   sim$spreadFirePoints <- out22$SpatialPoints
   fireBufferedListDT <- out22$FireBuffered
 
-  ####prep terrain for PCA####
-  # pre-name the X for the lapply --> it keeps the names correctly
-  layers <- seq(nlayers(sim$terrainCovariates))
-  names(layers) <- names(sim$terrainCovariates)
-  # Seems to be the fastest way to get data out of a RasterStack
-  terrainDT <- setDT(lapply(layers, FUN = function(x)
-    getValues(sim$terrainCovariates[[x]])
-  ))
+  #### prep terrain for PCA ####
+  sim$terrainDT <- buildTerrainDT(terrainCovariates = sim$terrainCovariates,
+                                  flammableRTM = sim$flammableRTM)
 
-  set(terrainDT, j = "pixelID", value = 1:ncell(sim$pixelGroupMap2001))
-  set(terrainDT, j = "flammable", value = getValues(sim$flammableRTM))
-  terrainDT <- terrainDT[flammable == 1,] %>%
-    set(., NULL, "flammable", NULL) %>%
-    na.omit(.)
-  sim$terrainDT <- terrainDT #unclear if terrain will be separate PCA or not.
-  #if separate, just keep the PCA object, terrain won't change.
-  #it should be combined with lcc for a single table that can be referenced during predict
-  rm(terrainDT)
-
-  ## prep landcover for PCA
-  # this can be made into a fireSenseUtils function, but it is only done once - here.
-  lcc <- data.table(pixelID = 1:ncell(sim$rstLCC),
-                    lcc = getValues(sim$rstLCC),
-                    flammable = getValues(sim$flammableRTM)) %>%
-    .[lcc != 0,] %>%
-    .[!is.na(flammable),] %>%
-    .[flammable == 1,] %>%
-    .[, lcc := as.factor(lcc)]
-  set(lcc, NULL, "flammable", NULL)
-  lcc <- Cache(fastDummies::dummy_cols, .data = lcc,
-               select_columns = "lcc",
-               remove_selected_columns = TRUE,
-               remove_first_dummy = FALSE, #no need if all forest LC is removed anyway
-               ignore_na = TRUE,
-               userTags = c("dummy_cols"))
-
-  forestedLCC <- paste0("lcc_", P(sim)$forestedLCC)
-  forestedLCC <- colnames(lcc)[colnames(lcc) %in% forestedLCC]
-  set(lcc, NULL, j = forestedLCC, NULL) #removes columns of forested LCC
-
-  #Group dummy columns into similar landcovers
-  lccColsPreGroup <- colnames(lcc)[!colnames(lcc) %in% c("pixelID")]
-  setDT(lcc) #pre-allocate space for new columns
-
-  for (i in names(sim$nonForestedLCCGroups)) {
-    classes <- paste0("lcc_", sim$nonForestedLCCGroups[[i]])
-    classes <- classes[classes %in% colnames(lcc)]
-    set(lcc, NULL,  eval(i), rowSums(lcc[, .SD, .SDcols = classes]))
-  }
-  rm(classes)
-  set(lcc, NULL, lccColsPreGroup, NULL)
-  sim$landcoverDT <- lcc
-  #save the lcc - it will be used by predict models
+  #### prep landcover for PCA ####
+  sim$landcoverDT <- makeLandcoverDT(rstLCC = sim$rstLCC,
+                                     flammableRTM = sim$flammableRTM,
+                                     forestedLCC = P(sim)$forestedLCC,
+                                     nonForestedLCCGroups = sim$nonForestedLCCGroups)
 
   # cannot merge because before subsetting due to column differences over time
 
@@ -741,7 +697,7 @@ prepare_IgnitionFit <- function(sim) {
                      pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
                      MoreArgs = list(sppEquiv = sim$sppEquiv,
                                      sppEquivCol = P(sim)$sppEquivCol,
-                                     flammableMap = sim$flammableRTM,
+                                     flammableRTM = sim$flammableRTM,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
     lapply(., FUN = raster::brick) %>%
     lapply(., aggregate, fact = P(sim)$igAggFactor, fun = mean)
