@@ -548,31 +548,30 @@ Init <- function(sim) {
                         family = "binomial",
                         na.action = na.exclude)
 
-  if (isTRUE(doAssertion)) {
-    fb <- rbindlist(fireBufferedListDT)
-    vv <- vegPCAdat[fb, on = "pixelID", nomatch = NA]
-    set(vv, NULL, c("ids", "year", "pixelID", "pixelGroup", "youngAge"), NULL)
-    gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
-    ggs <- summary(gg)
-    coefs1 <- ggs$coefficients
-    coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
-    pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
-    pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
+  ## create vegFile outputs
+  fb <- rbindlist(fireBufferedListDT)
+  vv <- vegPCAdat[fb, on = "pixelID", nomatch = NA]
+  set(vv, NULL, c("ids", "year", "pixelID", "pixelGroup", "youngAge"), NULL)
+  gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
+  ggs <- summary(gg)
+  coefs1 <- ggs$coefficients
+  coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
+  pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
+  pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
 
-    ## print to screen
-    message("Vegetation model direct: ")
-    messageDF(coefs1)
-    message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
-    message("R2 with PCA version: ", round(pseudoR2_vegPCA, 3))
+  ## print vegFile outputs to screen
+  message("Vegetation model direct: ")
+  messageDF(coefs1)
+  message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
+  message("R2 with PCA version: ", round(pseudoR2_vegPCA, 3))
 
-    ## print to file
-    cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
-    cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
-    cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
-        file = mod$vegFile, sep = "\n", append = TRUE)
-    cat(paste("R2 with PCA version: ", round(pseudoR2_vegPCA, 3), "\n"),
-        file = mod$vegFile, sep = "\n", append = TRUE)
-  }
+  ## print vegFile outputs to file
+  cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
+  cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
+  cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
+      file = mod$vegFile, sep = "\n", append = TRUE)
+  cat(paste("R2 with PCA version: ", round(pseudoR2_vegPCA, 3), "\n"),
+      file = mod$vegFile, sep = "\n", append = TRUE)
 
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
