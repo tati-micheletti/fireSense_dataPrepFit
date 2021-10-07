@@ -232,8 +232,7 @@ Init <- function(sim) {
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
   mod$vegFile <- file.path(outputPath(sim),
-                           paste0(paste("fireSense_SpreadFit_veg_coeffs", P(sim)$.studyAreaName,
-                                        P(sim)$climateGCM, P(sim)$climateSSP, sep = "_"), ".txt"))
+                           paste0("fireSense_SpreadFit_veg_coeffs_", P(sim)$.studyAreaName, ".txt"))
 
   if (any(is.na(sim$sppEquiv[["FuelClass"]]))) {
     stop("All species must have fuelClass defined.")
