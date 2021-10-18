@@ -70,6 +70,8 @@ defineModule(sim, list(
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
                                  "or at the ignition points in sim$firePoints?")),
+    defineParameter(name = "usePCA", class = "logical", default = TRUE, NA, NA,
+                    desc = "use PCA approach to covariates, as opposed to fuel class approach"),
     defineParameter(name = "whichModulesToPrepare", class = "character",
                     default = c("fireSense_IgnitionFit", "fireSense_SpreadFit", "fireSense_EscapeFit"),
                     NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
@@ -340,6 +342,7 @@ Init <- function(sim) {
                                   flammableRTM = sim$flammableRTM)
 
   #### prep landcover for PCA ####
+  #this is needed whether PCA or not
   sim$landcoverDT <- makeLandcoverDT(rstLCC = sim$rstLCC,
                                      flammableRTM = sim$flammableRTM,
                                      forestedLCC = P(sim)$forestedLCC,
@@ -364,7 +367,7 @@ Init <- function(sim) {
                         lcc = sim$landcoverDT,
                         terrainDT = sim$terrainDT,
                         missingLCC = P(sim)$missingLCC)
-    cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
+  cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
                           pixelGroupMap = sim$pixelGroupMap2011,
                           year = 2011,
                           cutoffForYoungAge = P(sim)$cutoffForYoungAge,
@@ -413,7 +416,29 @@ Init <- function(sim) {
     reproducible::messageDF(ss, round = 3, colour = "green")
   }
 
-  # rm(vegList, vegPCAdat) # don't delete things because they are helpful for debugging
+  if (!P(sim)$usePCA) {
+    vegComponents <- Map(f = cohortsToFuelClasses,
+                       cohortData = list(sim$cohortData2001, sim$cohortData2011),
+                       yearCohort = list(2001, 2011),
+                       pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
+                       MoreArgs = list(sppEquiv = sim$sppEquiv,
+                                       sppEquivCol = P(sim)$sppEquivCol,
+                                       flammableRTM = sim$flammableRTM,
+                                       cutoffForYoungAge = P(sim)$cutoffForYoungAge))
+    vegComponents <- lapply(vegComponents, FUN = function(x){
+      dt <- as.data.table(getValues(x))
+      dt[, pixelIndex := 1:ncell(x)]
+      dt <- dt[!is.na(youngAge)]
+      return(dt)
+    })
+    vegComponents[[1]][, year := 2001]
+    vegComponents[[2]][, year := 2011]
+    vegComponents <- rbindlist(vegComponents)
+    vegJoin <- vegPCAdat[, .SD, .SDcols = c("year", "pixelID", names(sim$nonForestedLCCGroups))]
+    vegComponents <- vegJoin[vegComponents, on = c("year", "pixelID" = "pixelIndex")]
+    setcolorder(vegComponents, c("year", "pixelID"))
+
+  } else {
   #if there are fewer components than parameter, take them all
   components <- paste0("PC", 1:min(as.integer(P(sim)$PCAcomponentsForVeg), length(sim$PCAveg$scale)))
 
@@ -424,7 +449,7 @@ Init <- function(sim) {
   #rename components so climate/veg components distinguishable
   setnames(vegComponents, old = components, new = paste0("veg", components))
   # rm(components)
-
+  }
   ####prep Climate components####
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
     .[value == 1,] %>%
@@ -486,7 +511,8 @@ Init <- function(sim) {
 
   ####run logistic regression####
   #build logistic formula
-  logitFormula <- grep("veg*", names(fireSenseVegData), value = TRUE) %>%
+  grepCol <- ifelse(P(sim)$usePCA, "veg*", "class*|nonForest*")
+  logitFormula <- grep(grepCol, names(fireSenseVegData), value = TRUE) %>%
     paste0(., collapse = " +") %>%
     paste0("burned ~ ", .)
 
@@ -515,28 +541,33 @@ Init <- function(sim) {
   pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
   pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
 
-  ## print vegFile outputs to screen
-  message("Vegetation model direct: ")
-  messageDF(coefs1)
-  message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
-  message("R2 with PCA version: ", round(pseudoR2_vegPCA, 3))
+    ## print to screen
+    message("Vegetation model direct: ")
+    messageDF(coefs1)
+    message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
+    message("R2 with fireSense version: ", round(pseudoR2_vegPCA, 3))
 
-  ## print vegFile outputs to file
-  cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
-  cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
-  cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
-      file = mod$vegFile, sep = "\n", append = TRUE)
-  cat(paste("R2 with PCA version: ", round(pseudoR2_vegPCA, 3), "\n"),
-      file = mod$vegFile, sep = "\n", append = TRUE)
+    ## print to file
+    cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
+    cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
+    cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
+        file = mod$vegFile, sep = "\n", append = TRUE)
+    cat(paste("R2 with fireSense version: ", round(pseudoR2_vegPCA, 3), "\n"),
+        file = mod$vegFile, sep = "\n", append = TRUE)
+  }
 
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
+  if (P(sim)$usePCA){
   sim$vegComponentsToUse <- names(bestComponents) #the values will be wrong due to abs, just take names
+  } else {
+    sim$vegComponentsToUse <- sort(names(bestComponents)[!is.na(bestComponents)])
+  }
   # mod$fireSense_spreadLogitModel <- fireSenseLogit
   sim$coefficientPrintOut <- fireSenseLogit$coefficients[sim$vegComponentsToUse]
 
-  RHS <- paste0("youngAge +",
+  RHS <- paste0("youngAge + ",
                 paste(sim$climateComponentsToUse, collapse = " + "),
                 " + ",
                 paste(sim$vegComponentsToUse, collapse = " + "))
@@ -544,7 +575,7 @@ Init <- function(sim) {
   mod$fireSenseVegData <- fireSenseVegData
   mod$climateComponents <- climateComponents #needed by prep spread
   #sim$fireSense_spreadFormula <- as.formula(paste("~0 + ", paste(RHS)))
-  sim$fireSense_spreadFormula <- paste("~0 + ", paste(RHS))
+  sim$fireSense_spreadFormula <- paste("~0 +", paste(RHS))
   sim$fireBufferedListDT <- fireBufferedListDT #needed by DEOptim
 
   return(invisible(sim))
@@ -815,6 +846,7 @@ Save <- function(sim) {
 
 ### template for plot events
 plotAndMessage <- function(sim) {
+  if (P(sim)$usePCA){
   checkPath(file.path(outputPath(sim), "figures"), create = TRUE)
   components <- as.data.table(sim$PCAveg$rotation)
   setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
@@ -852,7 +884,7 @@ plotAndMessage <- function(sim) {
   }
   ggsave(file.path(outputPath(sim), "figures", paste0("PCAcoeffLoadings_", P(sim)$.studyAreaName, ".png")),
          sim$PCAcoeffPlot)
-
+  }
   return(invisible(sim))
 }
 
