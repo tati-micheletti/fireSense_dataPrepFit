@@ -519,7 +519,7 @@ Init <- function(sim) {
   if (isTRUE(doAssertion)) {
     ttt <- table(fireSenseVegData$burned)
     ratioZeroToOne <- ttt[1]/ttt[2]
-    if (ratioZeroToOne < 5)
+    if (ratioZeroToOne < 5) {
       stop("The number of pixels in the fire buffers should be at least 5x the number of burned pixels\n",
            "Please create larger buffers around fires in fireBufferedListDT, e.g., via ",
            "fireSenseUtils::bufferToArea(..., areaMultiplier = multiplier)")
@@ -555,7 +555,6 @@ Init <- function(sim) {
     cat(paste("R2 with fireSense version: ", round(pseudoR2_vegPCA, 3), "\n"),
         file = mod$vegFile, sep = "\n", append = TRUE)
   }
-
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
