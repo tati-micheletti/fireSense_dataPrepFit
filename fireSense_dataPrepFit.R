@@ -13,8 +13,8 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
-                  "PredictiveEcology/SpaDES.core@development (>=1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>=0.0.5)",
+                  "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9001)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -279,7 +279,8 @@ Init <- function(sim) {
 
   # Post buffering, new issues --> must make sure points and buffers match
   pointsIDColumn <- "FIRE_ID"
-  sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints, cent = sim$spreadFirePoints,
+  sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints,
+                                cent = sim$spreadFirePoints,
                                 buff = fireBufferedListDT,
                                 ras = sim$flammableRTM,
                                 idCol = pointsIDColumn, #this is different from default
@@ -1000,13 +1001,13 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("flammableRTM", sim)) {
-    sim$flammableRTM <- LandR::defineFlammable(sim$rstLCC,
-                                               nonFlammClasses = P(sim)$nonflammableLCC,
-                                               mask = sim$rasterToMatch,
-                                               filename2 = file.path(dPath, paste0("flammableRTM_",
-                                                                                   P(sim)$.studyAreaName,
-                                                                                   ".tif"))
-                                               )
+    sim$rstLCC[] <- as.integer(sim$rstLCC[])
+    sim$flammableRTM <- LandR::defineFlammable(
+      sim$rstLCC,
+      nonFlammClasses = P(sim)$nonflammableLCC,
+      mask = sim$rasterToMatch,
+      filename2 = file.path(dPath, paste0("flammableRTM_", P(sim)$.studyAreaName, ".tif"))
+    )
   }
 
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
