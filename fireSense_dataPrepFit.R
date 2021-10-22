@@ -52,7 +52,7 @@ defineModule(sim, list(
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
                     desc = paste("if a pixel is forested but is absent from cohortData, it will be grouped in this class.",
-                                 "Must be one of the names in sim$nonForestedLCCGroups")),
+                                 "Must be one of the names in `sim$nonForestedLCCGroups`")),
     defineParameter(name = "nonflammableLCC", class = "numeric", c(13, 16, 17, 18, 19), NA, NA,
                     desc = "non-flammable LCC in sim$rstLCC"),
     defineParameter(name = "PCAcomponentsForClimate", "numeric", 1, 1, NA,
@@ -993,11 +993,13 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("terrainCovariates", sim)) {
-     sim$terrainCovariates <- Cache(fireSenseUtils::prepTerrainCovariates,
-                                   studyArea = sim$studyArea,
-                                   rasterToMatch = sim$rasterToMatch,
-                                   destinationPath = dPath,
-                                   userTags = c("terrainCovariates"))
+     sim$terrainCovariates <- Cache(
+       fireSenseUtils::prepTerrainCovariates,
+       studyArea = sim$studyArea,
+       rasterToMatch = sim$rasterToMatch,
+       destinationPath = dPath,
+       userTags = c("terrainCovariates")
+      )
   }
 
   if (!suppliedElsewhere("flammableRTM", sim)) {
