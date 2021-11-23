@@ -506,9 +506,14 @@ Init <- function(sim) {
                         na.action = na.exclude)
 
   ## create vegFile outputs
-  fb <- rbindlist(fireBufferedListDT)
-  vv <- vegPCAdat[fb, on = "pixelID", nomatch = NA]
-  set(vv, NULL, c("ids", "year", "pixelID", "pixelGroup", "youngAge"), NULL)
+  #this is a "null model" to compare with the PCA approach -
+  fb1 <- logisticCovariatesPre2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
+  fb2 <- logisticCovariatesPost2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
+  vv <- rbind(fb1, fb2)
+  #left join - so must remove the unbuffered pixels
+  vv <- vv[!is.na(buffer)]
+
+  set(vv, NULL, c("year", "pixelID", "pixelGroup", "youngAge"), NULL)
   gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
   ggs <- summary(gg)
   coefs1 <- ggs$coefficients
