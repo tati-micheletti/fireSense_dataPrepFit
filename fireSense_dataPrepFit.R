@@ -3,7 +3,7 @@ defineModule(sim, list(
   description = "",
   keywords = "",
   authors = c(
-    person(c("Ian"), "Eddy", role = c("aut", "cre"), email = "ian.eddy@canada.ca"),
+    person("Ian", "Eddy", role = c("aut", "cre"), email = "ian.eddy@canada.ca"),
     person(c("Alex", "M"), "Chubaty", role = c("ctb"), email = "achubaty@for-cast.ca")
   ),
   childModules = character(0),
@@ -13,8 +13,8 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
-                  "PredictiveEcology/SpaDES.core@development (>=1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils (>=0.0.5.9002)",
+                  "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9001)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -54,7 +54,7 @@ defineModule(sim, list(
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
                     desc = paste("if a pixel is forested but is absent from cohortData, it will be grouped in this class.",
-                                 "Must be one of the names in sim$nonForestedLCCGroups")),
+                                 "Must be one of the names in `sim$nonForestedLCCGroups`")),
     defineParameter(name = "nonflammableLCC", class = "numeric", c(13, 16, 17, 18, 19), NA, NA,
                     desc = "non-flammable LCC in sim$rstLCC"),
     defineParameter(name = "PCAcomponentsForClimate", "numeric", 1, 1, NA,
@@ -281,7 +281,8 @@ Init <- function(sim) {
 
   # Post buffering, new issues --> must make sure points and buffers match
   pointsIDColumn <- "FIRE_ID"
-  sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints, cent = sim$spreadFirePoints,
+  sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints,
+                                cent = sim$spreadFirePoints,
                                 buff = fireBufferedListDT,
                                 ras = sim$flammableRTM,
                                 idCol = pointsIDColumn, #this is different from default
@@ -537,16 +538,21 @@ Init <- function(sim) {
                           family = "binomial",
                           na.action = na.exclude)
 
-    ## create vegFile outputs
-    fb <- rbindlist(fireBufferedListDT)
-    vv <- vegPCAdat[fb, on = "pixelID", nomatch = NA]
-    set(vv, NULL, c("ids", "year", "pixelID", "pixelGroup", "youngAge"), NULL)
-    gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
-    ggs <- summary(gg)
-    coefs1 <- ggs$coefficients
-    coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
-    pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
-    pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
+  ## create vegFile outputs
+  #this is a "null model" to compare with the PCA approach -
+  fb1 <- logisticCovariatesPre2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
+  fb2 <- logisticCovariatesPost2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
+  vv <- rbind(fb1, fb2)
+  #left join - so must remove the unbuffered pixels
+  vv <- vv[!is.na(buffer)]
+
+  set(vv, NULL, c("year", "pixelID", "pixelGroup", "youngAge"), NULL)
+  gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
+  ggs <- summary(gg)
+  coefs1 <- ggs$coefficients
+  coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
+  pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
+  pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
 
     ## print to screen
     message("Vegetation model direct: ")
@@ -1014,21 +1020,23 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("terrainCovariates", sim)) {
-     sim$terrainCovariates <- Cache(fireSenseUtils::prepTerrainCovariates,
-                                   studyArea = sim$studyArea,
-                                   rasterToMatch = sim$rasterToMatch,
-                                   destinationPath = dPath,
-                                   userTags = c("terrainCovariates"))
+     sim$terrainCovariates <- Cache(
+       fireSenseUtils::prepTerrainCovariates,
+       studyArea = sim$studyArea,
+       rasterToMatch = sim$rasterToMatch,
+       destinationPath = dPath,
+       userTags = c("terrainCovariates")
+      )
   }
 
   if (!suppliedElsewhere("flammableRTM", sim)) {
-    sim$flammableRTM <- LandR::defineFlammable(sim$rstLCC,
-                                               nonFlammClasses = P(sim)$nonflammableLCC,
-                                               mask = sim$rasterToMatch,
-                                               filename2 = file.path(dPath, paste0("flammableRTM_",
-                                                                                   P(sim)$.studyAreaName,
-                                                                                   ".tif"))
-                                               )
+    sim$rstLCC[] <- as.integer(sim$rstLCC[])
+    sim$flammableRTM <- LandR::defineFlammable(
+      sim$rstLCC,
+      nonFlammClasses = P(sim)$nonflammableLCC,
+      mask = sim$rasterToMatch,
+      filename2 = file.path(dPath, paste0("flammableRTM_", P(sim)$.studyAreaName, ".tif"))
+    )
   }
 
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
