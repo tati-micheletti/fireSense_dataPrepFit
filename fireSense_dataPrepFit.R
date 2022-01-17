@@ -7,7 +7,7 @@ defineModule(sim, list(
     person(c("Alex", "M"), "Chubaty", role = c("ctb"), email = "achubaty@for-cast.ca")
   ),
   childModules = character(0),
-  version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9001"),
+  version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9002"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
@@ -48,6 +48,8 @@ defineModule(sim, list(
                     "Forested land cover classes. These classes will be excluded from the PCA."),
     defineParameter(name = "igAggFactor", "numeric", 40, 1, NA,
                     desc = "aggregation factor for rasters during ignition prep"),
+    defineParameter(name = "ignitionFuelClassCol", class = "character", default = "FuelClass",
+                    desc = "the column in sppEquiv that defines unique fuel classes for ignition"),
     defineParameter(name = "minBufferSize", class = "numeric", 5000, NA, NA,
                     desc = "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
     defineParameter(name = 'missingLCCgroup', class = 'character', 'nonForest_highFlam', NA, NA,
@@ -67,9 +69,13 @@ defineModule(sim, list(
                     desc = "plot the PCA components with a heat map"),
     defineParameter(name = "sppEquivCol", class = "character", default = "LandR", NA, NA,
                     desc = "column name in sppEquiv object that defines unique species in cohortData"),
+    defineParameter(name = "spreadFuelClassCol", class = "character", default = "FuelClass",
+                    desc = "if using fuel classes for spread, the column in sppEquiv that defines unique fuel classes"),
     defineParameter(name = "useCentroids", class = "logical", default = TRUE,
                     desc = paste("Should fire ignitions start at the sim$firePolygons centroids (TRUE)",
                                  "or at the ignition points in sim$firePoints?")),
+    defineParameter(name = "usePCA", class = "logical", default = TRUE, NA, NA,
+                    desc = "use PCA approach to covariates, as opposed to fuel class approach"),
     defineParameter(name = "whichModulesToPrepare", class = "character",
                     default = c("fireSense_IgnitionFit", "fireSense_SpreadFit", "fireSense_EscapeFit"),
                     NA, NA, desc = "Which fireSense fit modules to prep? defaults to all 3")
@@ -103,7 +109,7 @@ defineModule(sim, list(
     expectsInput(objectName = "pixelGroupMap2011", objectClass = "RasterLayer",
                  desc = "RasterLayer that defines the pixelGroups for cohortData table in 2011"),
     expectsInput(objectName = "rasterToMatch", objectClass = "RasterLayer", sourceURL = NA,
-                 desc = "template raster for study area"),
+                 desc = "template raster for study area. Assumes some buffering of core area to limit edge effect of fire."),
     expectsInput(objectName = "rstLCC", objectClass = "RasterLayer", sourceURL = NA,
                  desc = "Raster of land cover. Defaults to LCC05."),
     expectsInput(objectName = "sppEquiv", objectClass = "data.table", sourceURL = NA,
@@ -234,10 +240,6 @@ Init <- function(sim) {
   mod$vegFile <- file.path(outputPath(sim),
                            paste0("fireSense_SpreadFit_veg_coeffs_", P(sim)$.studyAreaName, ".txt"))
 
-  if (any(is.na(sim$sppEquiv[["FuelClass"]]))) {
-    stop("All species must have fuelClass defined.")
-  }
-
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
     stop("firePolys needs a numeric FIRE_ID column")
@@ -341,6 +343,7 @@ Init <- function(sim) {
                                   flammableRTM = sim$flammableRTM)
 
   #### prep landcover for PCA ####
+  #this is needed whether PCA or not
   sim$landcoverDT <- makeLandcoverDT(rstLCC = sim$rstLCC,
                                      flammableRTM = sim$flammableRTM,
                                      forestedLCC = P(sim)$forestedLCC,
@@ -355,6 +358,8 @@ Init <- function(sim) {
       }) %>%
     do.call(rbind, .)
 
+  #fuelClasses only uses this object for comparing the logistic model
+  #otherwise it could be inside the if
   origDTThreads <- data.table::setDTthreads(2)
   cohorts2001 <-  Cache(castCohortData,
                         cohortData = sim$cohortData2001,
@@ -365,67 +370,91 @@ Init <- function(sim) {
                         lcc = sim$landcoverDT,
                         terrainDT = sim$terrainDT,
                         missingLCC = P(sim)$missingLCC)
-    cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
-                          pixelGroupMap = sim$pixelGroupMap2011,
-                          year = 2011,
-                          cutoffForYoungAge = P(sim)$cutoffForYoungAge,
-                          ageMap = NULL,
-                          lcc = sim$landcoverDT,
-                          terrainDT = sim$terrainDT,
-                          missingLCC = P(sim)$missingLCC)
+  cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
+                        pixelGroupMap = sim$pixelGroupMap2011,
+                        year = 2011,
+                        cutoffForYoungAge = P(sim)$cutoffForYoungAge,
+                        ageMap = NULL,
+                        lcc = sim$landcoverDT,
+                        terrainDT = sim$terrainDT,
+                        missingLCC = P(sim)$missingLCC)
 
   vegPCAdat <- rbindlist(list(cohorts2001, cohorts2011), use.names = TRUE)
   mod$vegPCAdat <- vegPCAdat
-  #used for ignition
 
-  # rm(cohorts2001, cohorts2011, lcc)
+  if (P(sim)$usePCA) {
 
-  #Clean up missing pixels - this is a temporary fix
-  #we will always have NAs because of edge pixels - will be an issue when predicting
-  # The next 1 line replaces the 8 or so lines after
-  fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegPCAdat$pixelID)
-  #fbldt <- rbindlist(fireBufferedListDT, idcol = "year")
-  #fbldt <- unique(vegPCAdat, by = "pixelID")[, .(pixelID)][fbldt, on = "pixelID", nomatch = NULL]
-  # fbldt3 <- fbldt[fbldt$pixelID %in% unique(vegPCAdat$pixelID)]
-  #fireBufferedListDT <- split(fbldt, by = "year", keep.by = FALSE)
+    nonTreeNames <- c(names(sim$landcoverDT), names(sim$terrainDT))
+    nonTreeNames <- nonTreeNames[!nonTreeNames %in% "pixelID"]
+    # Next line can't handle memoising well
+    opts <- options("reproducible.useMemoise" = FALSE)
+    vegList <- Cache(makeVegTerrainPCA,
+                     dontAlter = nonTreeNames, #in case default lcc change
+                     dataForPCA = vegPCAdat)
+    options(opts)
+    vegComponents <- vegList$vegComponents
 
-  # origNames <- names(fireBufferedListDT)
-  # fireBufferedListDT <- lapply(fireBufferedListDT, FUN = function(year){
-  #   missingPixels <- year[!pixelID %in% vegPCAdat$pixelID]
-  #   if (nrow(missingPixels) > 0) {
-  #     year <- year[!pixelID %in% missingPixels$pixelID]
-  #   }
-  #   return(year)
-  # })
-  # names(fireBufferedListDT) <- origNames
-  # rm(origNames)
+    # To see how much variance explained https://stats.stackexchange.com/questions/254592/calculating-pca-variance-explained/254598
+    sim$PCAveg <- vegList$vegTerrainPCA
+    if (isTRUE(doAssertion))  {
+      ss <- summary(sim$PCAveg)$importance
+      ss <- data.frame("component" = rownames(ss), ss)
+      reproducible::messageDF(ss, round = 3, colour = "green")
+    }
+    #if there are fewer components than parameter, take them all
+    components <- paste0("PC", 1:min(as.integer(P(sim)$PCAcomponentsForVeg), length(sim$PCAveg$scale)))
 
-  # Next line can't handle memoising well
-  opts <- options("reproducible.useMemoise" = FALSE)
-  vegList <- Cache(makeVegTerrainPCA, dataForPCA = vegPCAdat)
-  options(opts)
-  vegComponents <- vegList$vegComponents
+    removeCols <- setdiff(colnames(vegComponents), c(components, "pixelID", "year", "youngAge"))
+    if (length(removeCols))
+      set(vegComponents, NULL, removeCols, NULL)
+    # vegComponents <- vegComponents[, .SD, .SDcols = c(components, "pixelID", "year", "youngAge")]
+    #rename components so climate/veg components distinguishable
+    setnames(vegComponents, old = components, new = paste0("veg", components))
 
-  # To see how much variance explained https://stats.stackexchange.com/questions/254592/calculating-pca-variance-explained/254598
-  sim$PCAveg <- vegList$vegTerrainPCA
-  if (isTRUE(doAssertion))  {
-    ss <- summary(sim$PCAveg)$importance
-    ss <- data.frame("component" = rownames(ss), ss)
-    reproducible::messageDF(ss, round = 3, colour = "green")
+  } else {
+    #fuel class approach
+    if (any(is.na(sim$sppEquiv[[P(sim)$spreadFuelClassCol]]))) {
+      stop("All species must have a spread fuel class defined in sppEquiv.")
+    }
+
+    vegComponents <- Map(f = cohortsToFuelClasses,
+                         cohortData = list(sim$cohortData2001, sim$cohortData2011),
+                         yearCohort = list(2001, 2011),
+                         pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
+                         MoreArgs = list(sppEquiv = sim$sppEquiv,
+                                         sppEquivCol = P(sim)$sppEquivCol,
+                                         flammableRTM = sim$flammableRTM,
+                                         fuelClassCol = P(sim)$spreadFuelClassCol,
+                                         cutoffForYoungAge = -1)) #youngAge will be calculated every year
+
+    vegComponents <- lapply(vegComponents, FUN = function(x){
+      dt <- as.data.table(getValues(x))
+      dt[, pixelID := 1:ncell(x)]
+      # dt <- dt[!is.na(youngAge)] unlike in prepare_ignition, we do not remove youngAge
+      #it will be added annually by spreadFit
+      return(dt)
+    })
+
+    vegComponents[[1]][, year := 2001]
+    vegComponents[[2]][, year := 2011]
+
+    #joining with landcoverDT eliminates non-flammable pixels - every remaining pixel MUST have a value
+    #join landcover separately, as the forest extent changes between 2001 and 2011
+    vegComponents[[1]] <- vegComponents[[1]][sim$landcoverDT, on = c("pixelID")]
+    vegComponents[[2]] <- vegComponents[[2]][sim$landcoverDT, on = c("pixelID")]
+    vegComponents <- rbindlist(vegComponents)
+    setcolorder(vegComponents, c("pixelID", "year"))
+
+    #set 'orphaned' pixels as P(sim)$missingLCC - the forest that is not LandR forest
+    lccNames <- setdiff(names(vegComponents), c("pixelID", "year"))
+    vegComponents[, missingLCC := rowSums(vegComponents[, .SD, .SDcols = lccNames])]
+    vegComponents[missingLCC == 0, eval(P(sim)$missingLCC) := 1]
+    #TODO: when we add assertions, assert that there are no rows where missingLCC = 2
+    vegComponents[, missingLCC := NULL]
   }
 
-  # rm(vegList, vegPCAdat) # don't delete things because they are helpful for debugging
-  #if there are fewer components than parameter, take them all
-  components <- paste0("PC", 1:min(as.integer(P(sim)$PCAcomponentsForVeg), length(sim$PCAveg$scale)))
-
-  removeCols <- setdiff(colnames(vegComponents), c(components, "pixelID", "year", "youngAge"))
-  if (length(removeCols))
-    set(vegComponents, NULL, removeCols, NULL)
-  # vegComponents <- vegComponents[, .SD, .SDcols = c(components, "pixelID", "year", "youngAge")]
-  #rename components so climate/veg components distinguishable
-  setnames(vegComponents, old = components, new = paste0("veg", components))
-  # rm(components)
-
+  # The next 1 line replaces the 8 or so lines after
+  fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegComponents$pixelID)
   ####prep Climate components####
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
     .[value == 1,] %>%
@@ -487,23 +516,27 @@ Init <- function(sim) {
 
   ####run logistic regression####
   #build logistic formula
-  logitFormula <- grep("veg*", names(fireSenseVegData), value = TRUE) %>%
-    paste0(., collapse = " +") %>%
+  vars <- names(fireSenseVegData)[!names(fireSenseVegData) %in% c("year", "pixelID", "youngAge", "burned", "ids")]
+
+
+  grepCol <- ifelse(P(sim)$usePCA, "veg*", paste0(vars, collapse= "|"))
+  logitFormula <- grep(grepCol, names(fireSenseVegData), value = TRUE) %>%
+    paste0(., collapse = " + ") %>%
     paste0("burned ~ ", .)
 
   if (isTRUE(doAssertion)) {
     ttt <- table(fireSenseVegData$burned)
     ratioZeroToOne <- ttt[1]/ttt[2]
-    if (ratioZeroToOne < 5)
+    if (ratioZeroToOne < 5) {
       stop("The number of pixels in the fire buffers should be at least 5x the number of burned pixels\n",
            "Please create larger buffers around fires in fireBufferedListDT, e.g., via ",
            "fireSenseUtils::bufferToArea(..., areaMultiplier = multiplier)")
-  }
+    }
 
-  fireSenseLogit <- glm(formula = eval(logitFormula),
-                        data = fireSenseVegData,
-                        family = "binomial",
-                        na.action = na.exclude)
+    fireSenseLogit <- glm(formula = eval(logitFormula),
+                          data = fireSenseVegData,
+                          family = "binomial",
+                          na.action = na.exclude)
 
   ## create vegFile outputs
   #this is a "null model" to compare with the PCA approach -
@@ -521,28 +554,32 @@ Init <- function(sim) {
   pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
   pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
 
-  ## print vegFile outputs to screen
-  message("Vegetation model direct: ")
-  messageDF(coefs1)
-  message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
-  message("R2 with PCA version: ", round(pseudoR2_vegPCA, 3))
+    ## print to screen
+    message("Vegetation model direct: ")
+    messageDF(coefs1)
+    message("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3))
+    message("R2 with fireSense version: ", round(pseudoR2_vegPCA, 3))
 
-  ## print vegFile outputs to file
-  cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
-  cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
-  cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
-      file = mod$vegFile, sep = "\n", append = TRUE)
-  cat(paste("R2 with PCA version: ", round(pseudoR2_vegPCA, 3), "\n"),
-      file = mod$vegFile, sep = "\n", append = TRUE)
-
+    ## print to file
+    cat(paste("Vegetation model direct:\n"), file = mod$vegFile, sep = "\n", append = FALSE)
+    cat(capture.output(coefs1), file = mod$vegFile, sep = "\n", append = TRUE)
+    cat(paste("R2 with vegetation direct: ", round(pseudoR2_vegDirect, 3)),
+        file = mod$vegFile, sep = "\n", append = TRUE)
+    cat(paste("R2 with fireSense version: ", round(pseudoR2_vegPCA, 3), "\n"),
+        file = mod$vegFile, sep = "\n", append = TRUE)
+  }
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
+  if (P(sim)$usePCA){
   sim$vegComponentsToUse <- names(bestComponents) #the values will be wrong due to abs, just take names
+  } else {
+    sim$vegComponentsToUse <- sort(names(bestComponents)[!is.na(bestComponents)])
+  }
   # mod$fireSense_spreadLogitModel <- fireSenseLogit
   sim$coefficientPrintOut <- fireSenseLogit$coefficients[sim$vegComponentsToUse]
 
-  RHS <- paste0("youngAge +",
+  RHS <- paste0("youngAge + ",
                 paste(sim$climateComponentsToUse, collapse = " + "),
                 " + ",
                 paste(sim$vegComponentsToUse, collapse = " + "))
@@ -550,13 +587,14 @@ Init <- function(sim) {
   mod$fireSenseVegData <- fireSenseVegData
   mod$climateComponents <- climateComponents #needed by prep spread
   #sim$fireSense_spreadFormula <- as.formula(paste("~0 + ", paste(RHS)))
-  sim$fireSense_spreadFormula <- paste("~0 + ", paste(RHS))
+  sim$fireSense_spreadFormula <- paste("~0 +", paste(RHS))
   sim$fireBufferedListDT <- fireBufferedListDT #needed by DEOptim
 
   return(invisible(sim))
 }
 
 prepare_SpreadFit <- function(sim) {
+
   ## Put in format for DEOptim
   ## Prepare annual spread fit covariates
   ## this is a funny way to get years but avoids years with 0 fires
@@ -574,40 +612,21 @@ prepare_SpreadFit <- function(sim) {
   fbl <- mod$climateComponents[fbl, on = c("year", "pixelID"), nomatch = NULL]
   fireSense_annualSpreadFitCovariates <- split(fbl, by = "year", keep.by = FALSE)
 
-  # fireSense_annualSpreadFitCovariates <- lapply(years, FUN = function(x) {
-  #   thisYear <- mod$climateComponents[year == x,]
-  #   set(thisYear, NULL, "year", NULL)
-  #   # thisYear <- thisYear[, .SD, .SDcols = -c("year")]
-  #   annualFireSenseDT <- sim$fireBufferedListDT[[x]]
-  #   rmCols <- setdiff(colnames(annualFireSenseDT), colnames(thisYear))
-  #   thisYear <- thisYear[annualFireSenseDT, on = "pixelID"]
-  #   set(thisYear, NULL, rmCols, NULL)
-  #   # thisYear <- thisYear[pixelID %in% annualFireSenseDT$pixelID,]
-  #   checkCols <- setdiff(colnames(thisYear), "pixelID")
-  #   hasNAs <- any(unlist(lapply(checkCols, function(x) anyNA(thisYear[[x]]))))
-  #   if (hasNAs)
-  #     thisYear <- na.omit(thisYear)
-  #   # thisYear <- as.data.table(thisYear)
-  #   #NAs are possible from raster projection issues and non-flammable buffer pixels
-  #   return(thisYear)
-  # })
-
   #prepare non-annual spread fit covariates
   pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
   post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
-  colsToExtract <- c("pixelID", "youngAge", sim$vegComponentsToUse)
+
+  colsToExtract <- c("pixelID", sim$vegComponentsToUse)
 
   #remove age from the annual covariates - it will come from TSD
   nonAnnualPre2011 <- mod$fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
     na.omit(.) %>%
     as.data.table(.) %>%
-    .[, youngAge := NULL] %>%
     .[!duplicated(pixelID),]
 
   nonAnnualPost2011 <- mod$fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
     na.omit(.) %>%
     as.data.table(.) %>%
-    .[, youngAge := NULL] %>%
     .[!duplicated(pixelID)] # remove duplicates from same pixel diff year
 
   # Create one universal TSD map for each initial time period combining stand age/ time since burn
@@ -628,13 +647,6 @@ prepare_SpreadFit <- function(sim) {
   ), .f = calcYoungAge, fireBufferedListDT = sim$fireBufferedListDT,
   cutoffForYoungAge = P(sim)$cutoffForYoungAge)
 
-  # annualCovariates <- Map(f = calcYoungAge,
-  #                         years = list(c(2001:2010), c(2011:max(P(sim)$fireYears))),
-  #                         annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
-  #                                                 fireSense_annualSpreadFitCovariates[post2011]),
-  #                         standAgeMap = list(TSD2001, TSD2011),
-  #                         MoreArgs = list(fireBufferedListDT = sim$fireBufferedListDT)
-  # )
   sim$fireSense_annualSpreadFitCovariates <- do.call(c, annualCovariates)
 
   if (start(sim) != 2011) {
@@ -652,6 +664,11 @@ prepare_SpreadFit <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
+
+  if (any(is.na(sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]))) {
+    stop("All species must have an ignition fuelClass defined.")
+  }
+
   #correct ignitions that fall on non-flammable pixels
   #if aggregating, still seems like it is an important step
 
@@ -703,6 +720,7 @@ prepare_IgnitionFit <- function(sim) {
                      MoreArgs = list(sppEquiv = sim$sppEquiv,
                                      sppEquivCol = P(sim)$sppEquivCol,
                                      flammableRTM = sim$flammableRTM,
+                                     fuelClassCol = P(sim)$ignitionFuelClassCol,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
     lapply(., FUN = raster::brick) %>%
     lapply(., aggregate, fact = P(sim)$igAggFactor, fun = mean)
@@ -730,7 +748,7 @@ prepare_IgnitionFit <- function(sim) {
                                       LCC = list(LCCras$year2001, LCCras$year2011),
                                       MoreArgs = list(climate = climate,
                                                       fires = sim$ignitionFirePoints,
-                                                      climVar = climVar #TODO: this is clunky, rethink
+                                                      climVar = climVar
                                       ))
 
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
@@ -754,13 +772,17 @@ prepare_IgnitionFit <- function(sim) {
   sim$ignitionFitRTM@data@attributes$nonNAs <- nrow(sim$fireSense_ignitionCovariates)
 
   #build formula
-  #TODO: fix this hardcoding
-
-  sim$fireSense_ignitionFormula <- paste0("ignitions ~ youngAge:MDC + nonForest_highFlam:MDC + ",
-                                          "nonForest_lowFlam:MDC + class2:MDC + class3:MDC + ",
-                                          "youngAge:pw(MDC, k_YA) + nonForest_lowFlam:pw(MDC, k_NFLF) + ",
-                                          "nonForest_highFlam:pw(MDC, k_NFHF) + class2:pw(MDC, k_class2) + ",
-                                          "class3:pw(MDC, k_class3) - 1")
+  igCovariates <- names(sim$fireSense_ignitionCovariates)
+  igCovariates <- igCovariates[!igCovariates %in% c(climVar, "year", "ignitions", "pixelID")]
+  pwNames <- abbreviate(igCovariates, minlength = 3, use.classes = TRUE, strict = FALSE)
+  interactions <- paste0(igCovariates, ":", climVar)
+  pw <- paste0(igCovariates, ":", "pw(", climVar, ", k_", pwNames, ")")
+  #sanity check for base::abbreviate
+  if (!all(length(unique(pw)), length(unique(interactions)) == length(igCovariates))) {
+    warning("automated ignition formula construction needs review")
+  }
+  sim$fireSense_ignitionFormula <- paste0("ignitions ~ ", paste0(interactions, collapse = " + "), " + ",
+                                          paste0(pw, collapse  = " + "), "- 1")
 
   return(invisible(sim))
 }
@@ -791,10 +813,11 @@ prepare_EscapeFit <- function(sim) {
 
   sim$fireSense_escapeCovariates <- escapeDT
 
-  ## TODO: fix hardcoded formula
-  sim$fireSense_escapeFormula <- paste0("cbind(escapes, ignitions - escapes) ~ youngAge + ",
-                                        "class2 + class3 + nonForest_lowFlam +",
-                                        "nonForest_highFlam + MDC - 1")
+
+  escapeVars <- names(escapeDT)[!names(escapeDT) %in% c("year", "pixelID", "escapes", "ignitions")]
+  LHS <- paste0("cbind(escapes, ignitions - escapes) ~ ")
+  RHS <- paste0(escapeVars, collapse = " + ")
+  sim$fireSense_escapeFormula <- paste0(LHS, RHS, " - 1")
 
   return(invisible(sim))
 }
@@ -821,6 +844,7 @@ Save <- function(sim) {
 
 ### template for plot events
 plotAndMessage <- function(sim) {
+  if (P(sim)$usePCA){
   checkPath(file.path(outputPath(sim), "figures"), create = TRUE)
   components <- as.data.table(sim$PCAveg$rotation)
   setnames(components, old = colnames(components), new = paste0("veg", colnames(components)))
@@ -858,7 +882,7 @@ plotAndMessage <- function(sim) {
   }
   ggsave(file.path(outputPath(sim), "figures", paste0("PCAcoeffLoadings_", P(sim)$.studyAreaName, ".png")),
          sim$PCAcoeffPlot)
-
+  }
   return(invisible(sim))
 }
 
@@ -871,10 +895,8 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
-    sim$rasterToMatch <- LandR::prepInputsLCC(year = 2005, ## TODO: use 2010
-                                              destinationPath = dPath,
-                                              studyArea = sim$studyArea,
-                                              useCache = TRUE)
+    sim$rasterToMatch <- LandR::prepInputsStandAgeMap(studyArea = sim$studyArea,
+                                                      destinationPath = dPath)
   }
 
   if (!all(suppliedElsewhere("cohortData2011", sim),
