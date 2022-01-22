@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9007)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9010)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -960,7 +960,10 @@ plotAndMessage <- function(sim) {
     # suppress any startup messages
     mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
     clObj <- parallel::makeCluster(type = "SOCK", mc)
-    a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
+
+    # library of LandR is a workaround to deal with weird
+    #  Function found when exporting methods from the namespace 'raster' which is not S4 generic: 'all.equal'
+    a <- parallel::clusterEvalQ(cl = clObj, {library(LandR); library(raster); library(rgeos)})
     clusterExport(cl = clObj, list("firePolys"), envir = sim)
     # debug(reproducible:::dealWithRasters)
     # debug(reproducible:::dealWithRastersOnRecovery)
