@@ -353,7 +353,7 @@ Init <- function(sim) {
 
   mod$firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0],
                                 FUN = sf::st_as_sf) %>%
-    lapply(., FUN = function(x){
+    lapply(., FUN = function(x) {
         x <- x[, "YEAR"]
       }) %>%
     do.call(rbind, .)
@@ -383,7 +383,6 @@ Init <- function(sim) {
   mod$vegPCAdat <- vegPCAdat
 
   if (P(sim)$usePCA) {
-
     nonTreeNames <- c(names(sim$landcoverDT), names(sim$terrainDT))
     nonTreeNames <- nonTreeNames[!nonTreeNames %in% "pixelID"]
     # Next line can't handle memoising well
@@ -519,7 +518,7 @@ Init <- function(sim) {
   vars <- names(fireSenseVegData)[!names(fireSenseVegData) %in% c("year", "pixelID", "youngAge", "burned", "ids")]
 
 
-  grepCol <- ifelse(P(sim)$usePCA, "veg*", paste0(vars, collapse= "|"))
+  grepCol <- ifelse(P(sim)$usePCA, "veg*", paste0(vars, collapse = "|"))
   logitFormula <- grep(grepCol, names(fireSenseVegData), value = TRUE) %>%
     paste0(., collapse = " + ") %>%
     paste0("burned ~ ", .)
@@ -538,21 +537,21 @@ Init <- function(sim) {
                           family = "binomial",
                           na.action = na.exclude)
 
-  ## create vegFile outputs
-  #this is a "null model" to compare with the PCA approach -
-  fb1 <- logisticCovariatesPre2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
-  fb2 <- logisticCovariatesPost2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
-  vv <- rbind(fb1, fb2)
-  #left join - so must remove the unbuffered pixels
-  vv <- vv[!is.na(buffer)]
+    ## create vegFile outputs
+    #this is a "null model" to compare with the PCA approach -
+    fb1 <- logisticCovariatesPre2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
+    fb2 <- logisticCovariatesPost2011[, .(pixelID, year, buffer)][vegPCAdat, on = c("pixelID", "year")]
+    vv <- rbind(fb1, fb2)
+    #left join - so must remove the unbuffered pixels
+    vv <- vv[!is.na(buffer)]
 
-  set(vv, NULL, c("year", "pixelID", "pixelGroup", "youngAge"), NULL)
-  gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
-  ggs <- summary(gg)
-  coefs1 <- ggs$coefficients
-  coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
-  pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
-  pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
+    set(vv, NULL, c("year", "pixelID", "pixelGroup", "youngAge"), NULL)
+    gg <- glm(buffer ~ ., data = vv, family = "binomial", na.action = na.exclude)
+    ggs <- summary(gg)
+    coefs1 <- ggs$coefficients
+    coefs1 <- data.frame("term" = rownames(coefs1), coefs1)
+    pseudoR2_vegDirect <- 1 - gg$deviance / gg$null.deviance
+    pseudoR2_vegPCA <- 1 - fireSenseLogit$deviance / fireSenseLogit$null.deviance
 
     ## print to screen
     message("Vegetation model direct: ")
@@ -571,7 +570,7 @@ Init <- function(sim) {
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
-  if (P(sim)$usePCA){
+  if (P(sim)$usePCA) {
   sim$vegComponentsToUse <- names(bestComponents) #the values will be wrong due to abs, just take names
   } else {
     sim$vegComponentsToUse <- sort(names(bestComponents)[!is.na(bestComponents)])
