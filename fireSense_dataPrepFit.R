@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9012)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9010)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -567,16 +567,13 @@ Init <- function(sim) {
     cat(paste("R2 with fireSense version: ", round(pseudoR2_vegPCA, 3), "\n"),
         file = mod$vegFile, sep = "\n", append = TRUE)
   }
-
   #take largest coeffiecients as they are mean-centered and scaled, number determined by param
   bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
                          decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
   if (P(sim)$usePCA) {
-    bestComponents <- sort(abs(fireSenseLogit$coefficients[2:length(fireSenseLogit$coefficients)]),
-                           decreasing = TRUE)[1:P(sim)$PCAcomponentsFromGLM]
-    sim$vegComponentsToUse <- names(bestComponents) #the values will be wrong due to abs, just take names
+  sim$vegComponentsToUse <- names(bestComponents) #the values will be wrong due to abs, just take names
   } else {
-   sim$vegComponentsToUse <-  setdiff(names(fireSenseLogit$coefficients), "(Intercept)")
+    sim$vegComponentsToUse <- sort(names(bestComponents)[!is.na(bestComponents)])
   }
   # mod$fireSense_spreadLogitModel <- fireSenseLogit
   sim$coefficientPrintOut <- fireSenseLogit$coefficients[sim$vegComponentsToUse]
@@ -909,7 +906,6 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("firePolys", sim) | !suppliedElsewhere("firePolysForAge", sim)) {
-    browser()
     # don't want to needlessly postProcess the same firePolys objects
     allFirePolys <- Cache(fireSenseUtils::getFirePolygons,
                           years = c(min(P(sim)$fireYears - P(sim)$cutoffForYoungAge):max(P(sim)$fireYears)),
