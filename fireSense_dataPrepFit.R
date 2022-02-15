@@ -306,7 +306,8 @@ Init <- function(sim) {
       cells <- cells[flammableInPolys,]
       rmFireIDs <- setdiff(badStarts, unique(cells$ids))
       newSp <- numeric()
-      if (any(flammableInPolys)) {
+
+      if (any(flammableInPolys, na.rm = TRUE)) {
         xyPolys <- cbind(id = cells$ids,
                          pixelID = cells$pixelID,
                          raster::xyFromCell(sim$flammableRTM, cells$pixelID))
