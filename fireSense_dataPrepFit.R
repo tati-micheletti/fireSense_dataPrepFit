@@ -449,7 +449,7 @@ Init <- function(sim) {
     lccNames <- setdiff(names(vegComponents), c("pixelID", "year"))
     vegComponents[, missingLCC := rowSums(vegComponents[, .SD, .SDcols = lccNames])]
     vegComponents[missingLCC == 0, eval(P(sim)$missingLCC) := 1]
-    #TODO: when we add assertions, assert that there are no rows where missingLCC = 2
+    ## TODO: when we add assertions, assert that there are no rows where missingLCC = 2
     vegComponents[, missingLCC := NULL]
   }
 
@@ -516,7 +516,8 @@ Init <- function(sim) {
 
   ## run logistic regression:
   ## build logistic formula
-  vars <- names(fireSenseVegData)[!names(fireSenseVegData) %in% c("year", "pixelID", "youngAge", "burned", "ids")]
+  vars <- names(fireSenseVegData)[!names(fireSenseVegData) %in%
+                                    c("year", "pixelID", "youngAge", "burned", "ids")]
 
   grepCol <- ifelse(P(sim)$usePCA, "veg*", paste0(vars, collapse = "|"))
   logitFormula <- grep(grepCol, names(fireSenseVegData), value = TRUE) %>%
