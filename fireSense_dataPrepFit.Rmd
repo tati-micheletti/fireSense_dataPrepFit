@@ -1,62 +1,30 @@
 ---
 title: "fireSense_dataPrepFit"
-author: ""
-date: "21 September 2020"
-output: pdf_document
+author: 
+  - Ian Eddy
+  - Alex Chubaty
+date: "September 2020; updated February 2022"
+output:
+  html_document:
+    keep_md: yes
 editor_options:
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, results = "hold")
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE, results = "hold", message = FALSE)
 ```
 
 # Overview
 
-Provide an overview of what the module does / how to use the module.
-
-Module documentation should be written so that others can use your module.
-This is a template for module documentation, and should be changed to reflect your module.
-
-## R Markdown
-
-R Markdown syntax allows R code, outputs, and figures to be rendered in the documentation.
-
-For help writing in R Markdown, see https://rmarkdown.rstudio.com/.
-
-# Usage
-
-```{r module_usage}
-library(SpaDES.core)
-
-setPaths(modulePath = file.path("C:/Ian/Git"))
-getPaths() # shows where the 4 relevant paths are
-
-times <- list(start = 0, end = 10)
-
-parameters <- list(
-  #.progress = list(type = "text", interval = 1), # for a progress bar
-  ## If there are further modules, each can have its own set of parameters:
-  #module1 = list(param1 = value1, param2 = value2),
-  #module2 = list(param1 = value1, param2 = value2)
-)
-modules <- list("fireSense_dataPrepFit")
-objects <- list()
-inputs <- list()
-outputs <- list()
-
-mySim <- simInit(times = times, params = parameters, modules = modules,
-                 objects = objects)
-
-mySimOut <- spades(mySim)
-```
+Prepare data required by `fireSense_IginitionFit`, `fireSense_EscapeFit`, and `fireSense_SpreadFit`.
 
 # Parameters
 
 Provide a summary of user-visible parameters.
 
-```{r moduleParams, echo = FALSE}
-df_params <- moduleParams("fireSense_dataPrepFit", "C:/Ian/Git")
+```{r moduleParams, echo = FALSE, eval = TRUE}
+df_params <- SpaDES.core::moduleParams("fireSense_dataPrepFit", "..")
 knitr::kable(df_params)
 ```
 
@@ -77,10 +45,10 @@ Write what is saved.
 ## Input data
 
 How to obtain input data, and a description of the data required by the module.
-If `sourceURL` is specified, `downloadData("fireSense_dataPrepFit", "C:/Ian/Git")` may be sufficient.
+If `sourceURL` is specified, `downloadData("fireSense_dataPrepFit", "..")` may be sufficient.
 
-```{r moduleInputs, echo = FALSE}
-df_inputs <- moduleInputs("fireSense_dataPrepFit", "C:/Ian/Git")
+```{r moduleInputs, echo = FALSE, eval = TRUE}
+df_inputs <- SpaDES.core::moduleInputs("fireSense_dataPrepFit", "..")
 knitr::kable(df_inputs)
 ```
 
@@ -88,11 +56,11 @@ knitr::kable(df_inputs)
 
 Description of the module outputs.
 
-```{r moduleOutputs, echo = FALSE}
-df_outputs <- moduleOutputs("fireSense_dataPrepFit", "C:/Ian/Git")
+```{r moduleOutputs, echo = FALSE, eval = TRUE}
+df_outputs <- SpaDES.core::moduleOutputs("fireSense_dataPrepFit", "..")
 knitr::kable(df_outputs)
 ```
 
 # Links to other modules
 
-Describe any anticipated linkages to other modules.
+Outputs used by `fireSense_IginitionFit`, `fireSense_EscapeFit`, and `fireSense_SpreadFit`.
