@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9012)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9013)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -417,6 +417,7 @@ Init <- function(sim) {
                          yearCohort = list(2001, 2011),
                          pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
                          MoreArgs = list(sppEquiv = sim$sppEquiv,
+                                         landcoverDT = sim$landcoverDT,
                                          sppEquivCol = P(sim)$sppEquivCol,
                                          flammableRTM = sim$flammableRTM,
                                          fuelClassCol = P(sim)$spreadFuelClassCol,
@@ -462,26 +463,7 @@ Init <- function(sim) {
                          Index = flammableIndex, userTags = c("climateRasterToDataTable"))
   rm(flammableIndex)
 
-  if (length(climatePCAdat) > 1) {
-    warning("running fireSense_dataPrepFit with two climate components is still in development")
-    ## TODO: this is untested
-    climatePCAdat <- Reduce(x = climatePCAdat, function(x, y, ...) merge(x, y , ...))
-    climatePCA <- prcomp(climatePCAdat[, .SD, .SDcols = !c("pixelID", "year")],
-                         center = TRUE,
-                         scale. = TRUE)
-    sim$PCAclimate <- climatePCA
-    climateComponents <- as.data.table(climatePCA$x * 1000)
-    climateComponents <- climateComponents[, lapply(.SD, asInteger), .SDcols = colnames(climateComponents)]
-    set(climateComponents, NULL,"pixelID", climatePCAdat$pixelID)
-    set(climateComponents, NULL,"year", climatePCAdat$year)
-    components <- paste0("PC", 1:P(sim)$PCAcomponentsForClimate)
-    climateComponents <- climateComponents[, .SD, .SDcols = c(components, "pixelID", "year")]
-    setnames(climateComponents, old = components, new = paste0("climate", components))
-    rm(components, climatePCA)
-  } else {
-    #don't rename, don't rescale
-    climateComponents <- climatePCAdat[[1]]
-  }
+  climateComponents <- climatePCAdat[[1]]
   #this is to construct the formula,
   #whether there are multiple climate components or a single non-transformed variable
   sim$climateComponentsToUse <- names(climateComponents)[!names(climateComponents) %in% c("pixelID", "year")]
@@ -710,12 +692,15 @@ prepare_IgnitionFit <- function(sim) {
                      yearCohort = list(2001, 2011),
                      pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
                      MoreArgs = list(sppEquiv = sim$sppEquiv,
+                                     landcoverDT = sim$landcoverDT,
                                      sppEquivCol = P(sim)$sppEquivCol,
                                      flammableRTM = sim$flammableRTM,
                                      fuelClassCol = P(sim)$ignitionFuelClassCol,
-                                     cutoffForYoungAge = P(sim)$cutoffForYoungAge)) %>%
-    lapply(., FUN = raster::brick) %>%
-    lapply(., aggregate, fact = P(sim)$igAggFactor, fun = mean)
+                                     cutoffForYoungAge = P(sim)$cutoffForYoungAge))
+  if (class(fuelClasses[[1]]) == "RasterStack") {
+    fuelClasses <- lapply(fuelClasses, FUN = raster::brick)
+  }
+  fuelClasses <- lapply(fuelClasses, aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
