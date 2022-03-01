@@ -700,17 +700,17 @@ prepare_IgnitionFit <- function(sim) {
                                      flammableRTM = sim$flammableRTM,
                                      fuelClassCol = P(sim)$ignitionFuelClassCol,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge))
-  if (class(fuelClasses[[1]]) == "RasterStack") {
-    fuelClasses <- lapply(fuelClasses, FUN = raster::brick)
-  }
   fuelClasses <- lapply(fuelClasses, function(ras) {
     if (!("youngAge" %in% layerNames(ras))) {
       youngAge <- raster(ras[[1]]) ## use template
       youngAge[!is.na(ras[[1]][])] <- 0
-      addLayer(ras, youngAge)
+      addLayer(ras, youngAge) ## produces RasterStack
     }
   })
-  fuelClasses <- lapply(fuelClasses, aggregate, fact = P(sim)$igAggFactor, fun = mean)
+  if (class(fuelClasses[[1]]) == "RasterStack") {
+    fuelClasses <- lapply(fuelClasses, FUN = raster::brick)
+  }
+  fuelClasses <- lapply(fuelClasses, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
