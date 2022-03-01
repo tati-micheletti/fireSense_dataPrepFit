@@ -700,15 +700,7 @@ prepare_IgnitionFit <- function(sim) {
                                      flammableRTM = sim$flammableRTM,
                                      fuelClassCol = P(sim)$ignitionFuelClassCol,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge))
-  # fuelClasses <- lapply(fuelClasses, function(ras) {
-  #   if (!("youngAge" %in% layerNames(ras))) {
-  #     youngAge <- raster(ras[[1]]) ## use template
-  #     youngAge[!is.na(ras[[1]][])] <- 0
-  #     addLayer(ras, youngAge) ## produces RasterStack
-  #   } else {
-  #     ras
-  #   }
-  # })
+
   if (class(fuelClasses[[1]]) == "RasterStack") {
     fuelClasses <- lapply(fuelClasses, FUN = raster::brick)
   }
@@ -746,13 +738,16 @@ prepare_IgnitionFit <- function(sim) {
   fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
                                                                           c("MDC", "cells", "ignitions", "year"))]
 
+
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   set(fireSense_ignitionCovariates, NULL, "coverSums", NULL)
 
   ## rename cells to pixelID - though aggregated raster is not saved
   setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
   fireSense_ignitionCovariates[, year := as.numeric(year)]
-  setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, "youngAge"))
+  firstCols <- c("pixelID", "ignitions", climVar, "youngAge")
+  firstCols <- firstCols[firstCols %in% names(fireSense_ignitionCovariates)]
+  setcolorder(fireSense_ignitionCovariates, neworder = firstCols)
   sim$fireSense_ignitionCovariates <- as.data.frame(fireSense_ignitionCovariates) ## avoid potential conflict in ignition
 
   #make new ignition object, ignitionFitRTM
