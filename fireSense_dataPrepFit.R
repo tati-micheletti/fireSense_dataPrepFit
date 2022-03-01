@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9013)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9015)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -358,6 +358,8 @@ Init <- function(sim) {
   #fuelClasses only uses this object for comparing the logistic model
   #otherwise it could be inside the if
   origDTThreads <- data.table::setDTthreads(2)
+  on.exit(data.table::setDTthreads(origDTThreads), add = TRUE)
+
   cohorts2001 <-  Cache(castCohortData,
                         cohortData = sim$cohortData2001,
                         pixelGroupMap = sim$pixelGroupMap2001,
@@ -408,7 +410,7 @@ Init <- function(sim) {
     setnames(vegComponents, old = components, new = paste0("veg", components))
 
   } else {
-    #fuel class approach
+    ## fuel class approach
     if (any(is.na(sim$sppEquiv[[P(sim)$spreadFuelClassCol]]))) {
       stop("All species must have a spread fuel class defined in sppEquiv.")
     }
@@ -641,7 +643,6 @@ prepare_SpreadFit <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
-
   if (any(is.na(sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]))) {
     stop("All species must have an ignition fuelClass defined.")
   }
@@ -702,6 +703,13 @@ prepare_IgnitionFit <- function(sim) {
   if (class(fuelClasses[[1]]) == "RasterStack") {
     fuelClasses <- lapply(fuelClasses, FUN = raster::brick)
   }
+  fuelClasses <- lapply(fuelClasses, function(ras) {
+    if (!("youngAge" %in% layerNames(ras))) {
+      youngAge <- raster(ras[[1]]) ## use template
+      youngAge[!is.na(ras[[1]][])] <- 0
+      addLayer(ras, youngAge)
+    }
+  })
   fuelClasses <- lapply(fuelClasses, aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
@@ -732,19 +740,18 @@ prepare_IgnitionFit <- function(sim) {
 
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
 
-  #remove any pixels that are 0 for all classes
+  ## remove any pixels that are 0 for all classes
   fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
                                                                           c("MDC", "cells", "ignitions", "year"))]
 
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   set(fireSense_ignitionCovariates, NULL, "coverSums", NULL)
 
-  #rename cells to pixelID - though aggregated raster is not saved
+  ## rename cells to pixelID - though aggregated raster is not saved
   setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
   fireSense_ignitionCovariates[, year := as.numeric(year)]
-  setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, 'youngAge'))
-  sim$fireSense_ignitionCovariates <- as.data.frame(fireSense_ignitionCovariates) #avoid potential conflict in ignition
-
+  setcolorder(fireSense_ignitionCovariates, neworder = c("pixelID", "ignitions", climVar, "youngAge"))
+  sim$fireSense_ignitionCovariates <- as.data.frame(fireSense_ignitionCovariates) ## avoid potential conflict in ignition
 
   #make new ignition object, ignitionFitRTM
   sim$ignitionFitRTM <- raster(fuelClasses$year2001)
@@ -942,7 +949,7 @@ plotAndMessage <- function(sim) {
 
     # library of LandR is a workaround to deal with weird
     #  Function found when exporting methods from the namespace 'raster' which is not S4 generic: 'all.equal'
-    a <- parallel::clusterEvalQ(cl = clObj, {library(LandR); library(raster); library(rgeos)})
+    a <- parallel::clusterEvalQ(cl = clObj, {library("LandR"); library("raster"); library("rgeos")})
     clusterExport(cl = clObj, list("firePolys"), envir = sim)
     # debug(reproducible:::dealWithRasters)
     # debug(reproducible:::dealWithRastersOnRecovery)
@@ -961,8 +968,8 @@ plotAndMessage <- function(sim) {
   }
 
   if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
-  #may be NULL if passed by objects - add to Init?
-  #this is necessary because centroids may be fewer than fires if fire polys were small
+  ## may be NULL if passed by objects - add to Init?
+  ## this is necessary because centroids may be fewer than fires if fire polys were small
     min1Fire <- lapply(sim$spreadFirePoints, length) > 0
     sim$spreadFirePoints <- sim$spreadFirePoints[min1Fire]
     sim$firePolys <- sim$firePolys[min1Fire]
@@ -970,8 +977,8 @@ plotAndMessage <- function(sim) {
 
   if (length(sim$firePolys) != length(sim$spreadFirePoints)) {
     stop("mismatched years between firePolys and firePoints")
-    #need to implement a better approach that matches each year's IDS
-    #these are mostly edge cases if a user passes only one of spreadFirePoints/firePolys
+    ## need to implement a better approach that matches each year's IDS
+    ## these are mostly edge cases if a user passes only one of spreadFirePoints/firePolys
   }
 
   if (!suppliedElsewhere("ignitionFirePoints", sim)) {
