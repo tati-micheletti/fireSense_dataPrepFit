@@ -705,6 +705,8 @@ prepare_IgnitionFit <- function(sim) {
       youngAge <- raster(ras[[1]]) ## use template
       youngAge[!is.na(ras[[1]][])] <- 0
       addLayer(ras, youngAge) ## produces RasterStack
+    } else {
+      ras
     }
   })
   if (class(fuelClasses[[1]]) == "RasterStack") {
