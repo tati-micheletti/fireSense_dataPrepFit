@@ -732,12 +732,20 @@ prepare_IgnitionFit <- function(sim) {
                                                       climVar = climVar
                                       ))
 
-  fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
+  if (!("youngAge" %in% colnames(fireSense_ignitionCovariates[[1]])) |
+      !("youngAge" %in% colnames(fireSense_ignitionCovariates[[2]]))) {
+    fireSense_ignitionCovariates <- lapply(fireSense_ignitionCovariates, function(fs_ic) {
+      if ("youngAge" %in% colnames(fs_ic)) {
+        set(fs_ic, NULL, "youngAge", NULL)
+      }
+      fs_ic
+    })
+  }
+  fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates) ## TODO: col mismatch ROF_plain
 
   ## remove any pixels that are 0 for all classes
   fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
                                                                           c("MDC", "cells", "ignitions", "year"))]
-
 
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   set(fireSense_ignitionCovariates, NULL, "coverSums", NULL)
