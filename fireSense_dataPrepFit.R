@@ -13,7 +13,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9023)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9026)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -172,7 +172,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
 
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
-
     },
     prepIgnitionFitData = {
       sim <- prepare_IgnitionFit(sim)
@@ -183,11 +182,9 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
     prepSpreadFitData = {
       sim <- prepare_SpreadFit(sim)
     },
-
     plotAndMessage = {
       sim <- plotAndMessage(sim)
     },
-
     cleanUp = {
       sim <- cleanUpMod(sim)
     },
@@ -354,7 +351,8 @@ prepare_SpreadFit <- function(sim) {
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
                               rasterToMatch = sim$flammableRTM,
-                              verb = TRUE, areaMultiplier = P(sim)$areaMultiplier,
+                              verb = TRUE,
+                              areaMultiplier = P(sim)$areaMultiplier,
                               field = "FIRE_ID",
                               cores = nCores,
                               minSize = P(sim)$minBufferSize,
