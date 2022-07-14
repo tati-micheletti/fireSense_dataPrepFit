@@ -508,6 +508,8 @@ prepare_SpreadFit <- function(sim) {
   names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
                                                          paste(names(post2011Indices), collapse = "_"))
 
+  sim$fireSense_spreadFormula <- paste0("~ 0 + ", RHS)
+
   return(invisible(sim))
 }
 
