@@ -14,13 +14,13 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9030)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9031)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("areaMultiplier", c("numeric", "function"), fireSenseUtils::multiplier, NA, NA,
                     paste("Either a scalar that will buffer areaMultiplier * fireSize or a function",
-                          "of fireSize. Default is 2. See fireSenseUtils::bufferToArea for help")),
+                          "of fireSize. Default is 2. See `fireSenseUtils::bufferToArea` for help")),
     defineParameter("cutoffForYoungAge", "numeric", 15, NA, NA,
                     "Age at and below which pixels are considered 'young' --> young <- age <= cutoffForYoungAge"),
     defineParameter("fireYears", "integer", 2001:2020, NA, NA,
@@ -259,7 +259,7 @@ Init <- function(sim) {
     names(sim$firePolys) <- origNames
     names(sim$spreadFirePoints) <- origNames
   }
-browser() ## year 2004 empty
+
   nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$firePolys))
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
