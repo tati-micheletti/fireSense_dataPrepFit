@@ -406,7 +406,6 @@ Init <- function(sim) {
     # vegComponents <- vegComponents[, .SD, .SDcols = c(components, "pixelID", "year", "youngAge")]
     #rename components so climate/veg components distinguishable
     setnames(vegComponents, old = components, new = paste0("veg", components))
-
   } else {
     ## fuel class approach
     if (any(is.na(sim$sppEquiv[[P(sim)$spreadFuelClassCol]]))) {
@@ -1033,7 +1032,7 @@ plotAndMessage <- function(sim) {
 
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
     sim$nonForestedLCCGroups <- list(
-      "nonForest_highFlam" = c(8, 10, 14),#shrubland, grassland, wetland
+      "nonForest_highFlam" = c(8, 10, 14), # shrubland, grassland, wetland
       "nonForest_lowFlam" = c(11, 12, 15) #shrub-lichen-moss + cropland. 2 barren classes are nonflam
     )
   }
