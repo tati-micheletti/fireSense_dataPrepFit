@@ -3,7 +3,7 @@ defineModule(sim, list(
   description = "Prepare data required by `fireSense_IginitionFit`, `fireSense_EscapeFit`, and `fireSense_SpreadFit`.",
   keywords = "fireSense",
   authors = c(
-    person(c("Ian"), "Eddy", role = c("aut", "cre"), email = "ian.eddy@nrcan-rncan.canada.ca"),
+    person("Ian", "Eddy", role = c("aut", "cre"), email = "ian.eddy@nrcan-rncan.gc.ca"),
     person(c("Alex", "M"), "Chubaty", role = c("ctb"), email = "achubaty@for-cast.ca")
   ),
   childModules = character(0),
