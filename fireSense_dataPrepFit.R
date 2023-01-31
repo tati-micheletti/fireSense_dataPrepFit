@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9031)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9036)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -230,10 +230,26 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 Init <- function(sim) {
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
+  ## sanity check the inputs
+  compareRaster(sim$rasterToMatch, sim$flammableRTM, sim$rstLCC,
+                sim$standAgeMap2001, sim$standAgeMap2011, sim$terrainCovariates)
+  lapply(sim$historicalClimateRasters, compareRaster, x = sim$rasterToMatch)
+
+  stopifnot(
+    "all ignitionFirePoints are not within studyArea" = identical(
+      nrow(st_as_sf(sim$ignitionFirePoints)),
+      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
+    ),
+    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+      nrow(st_as_sf(x)) == nrow(sf::st_intersection(st_as_sf(x), st_as_sf(sim$studyArea)))
+    })))
+  )
+
+  ## output filenames ------------------------------------------------------------------------------
   mod$vegFile <- file.path(outputPath(sim),
                            paste0("fireSense_SpreadFit_veg_coeffs_", P(sim)$.studyAreaName, ".txt"))
 
-  ####prep fire data ####
+  ## prep fire data --------------------------------------------------------------------------------
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
     stop("firePolys needs a numeric FIRE_ID column")
   }
@@ -264,7 +280,7 @@ Init <- function(sim) {
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
-                              rasterToMatch = sim$flammableRTM,
+                              rasterToMatch = sim$flammableRTM, ## TODO: use sim$rasterToMatch here?
                               verb = TRUE,
                               areaMultiplier = P(sim)$areaMultiplier,
                               field = "FIRE_ID",
@@ -979,7 +995,7 @@ plotAndMessage <- function(sim) {
 
   if (length(sim$firePolys) != length(sim$spreadFirePoints)) {
     stop("mismatched years between firePolys and firePoints")
-    ## need to implement a better approach that matches each year's IDS
+    ## TODO: need to implement a better approach that matches each year's IDS
     ## these are mostly edge cases if a user passes only one of spreadFirePoints/firePolys
   }
 
