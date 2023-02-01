@@ -280,6 +280,24 @@ prepare_SpreadFit <- function(sim) {
   ####prep veg data####
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
+  ## sanity check the inputs
+  compareRaster(sim$rasterToMatch, sim$flammableRTM, sim$rstLCC,
+                sim$standAgeMap2001, sim$standAgeMap2011, sim$terrainCovariates)
+  lapply(sim$historicalClimateRasters, compareRaster, x = sim$rasterToMatch)
+
+  stopifnot(
+    "all ignitionFirePoints are not within studyArea" = identical(
+      nrow(st_as_sf(sim$ignitionFirePoints)),
+      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
+    ),
+    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+      nrow(st_as_sf(x)) == nrow(sf::st_intersection(st_as_sf(x), st_as_sf(sim$studyArea)))
+    })))
+  )
+
+  ## output filenames ------------------------------------------------------------------------------
+  mod$vegFile <- file.path(outputPath(sim),
+                           paste0("fireSense_SpreadFit_veg_coeffs_", P(sim)$.studyAreaName, ".txt"))
   vegData <- Map(f = cohortsToFuelClasses,
                        cohortData = list(sim$cohortData2001, sim$cohortData2011),
                        yearCohort = list(2001, 2011),
@@ -345,7 +363,7 @@ prepare_SpreadFit <- function(sim) {
   fireBufferedListDT <- Cache(bufferToArea,
                               poly = sim$firePolys,
                               polyName = names(sim$firePolys),
-                              rasterToMatch = sim$flammableRTM,
+                              rasterToMatch = sim$flammableRTM, ## TODO: use sim$rasterToMatch here?
                               verb = TRUE,
                               areaMultiplier = P(sim)$areaMultiplier,
                               field = "FIRE_ID",
@@ -801,8 +819,8 @@ plotAndMessage <- function(sim) {
 
   if (length(sim$firePolys) != length(sim$spreadFirePoints)) {
     stop("mismatched years between firePolys and firePoints")
-    #need to implement a better approach that matches each year's IDS
-    #these are mostly edge cases if a user passes only one of spreadFirePoints/firePolys
+    ## TODO: need to implement a better approach that matches each year's IDS
+    ## these are mostly edge cases if a user passes only one of spreadFirePoints/firePolys
   }
 
   if (!suppliedElsewhere("ignitionFirePoints", sim)) {
