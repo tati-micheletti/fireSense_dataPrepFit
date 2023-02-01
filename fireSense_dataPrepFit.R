@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9031)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9037)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -264,18 +264,12 @@ Init <- function(sim) {
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
     .[value == 1,] %>%
     .$index
-  climateDT <- Cache(climateRasterToDataTable,
+  mod$climateDT <- Cache(climateRasterToDataTable,
                      historicalClimateRasters = sim$historicalClimateRasters,
                      Index = flammableIndex, userTags = c("climateRasterToDataTable"))
   rm(flammableIndex)
 
-  #TODO: climateDT returns a list because at one time I thought we might use multiple climate variables
-  #although list structure provides a convenient way to store the variable name (MDC)
-  #anyway - the list of 1 raster stack seems to generate some confusion..
-
   #needed by prep spread
-  mod$climateDT <- climateDT[[1]]
-
   return(invisible(sim))
 }
 
@@ -442,8 +436,6 @@ prepare_SpreadFit <- function(sim) {
   #As long as these pixels are also NA in climate data, no issue
 
   # we want to collapse both time steps for logistic regression
-  #TODO: as this is no longer the case (no logistic regression), do we need to collapse?
-  #but need to preserve structure of named lists for spreadFit
   fireSenseVegData <- rbind(pre2011Indices, post2011Indices)
   setnames(fireSenseVegData, "buffer", "burned")
 
@@ -579,17 +571,18 @@ prepare_IgnitionFit <- function(sim) {
     }
   }
 
+
   LCCras <- lapply(LCCras, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(LCCras) <- c("year2001", "year2011")
   fuelClasses <- lapply(fuelClasses, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
+  climVar <- names(climate)
   if (length(climate) > 1) {
     stop("need to fix ignition for multiple climate variables. contact module developers")
     #for now - fix when priority
   } else {
-    climVar <- names(climate)
     climate <- raster::stack(climate[[1]]) %>%
       aggregate(., fact = P(sim)$igAggFactor, fun = mean)
   }
@@ -612,10 +605,7 @@ prepare_IgnitionFit <- function(sim) {
 
   #remove any pixels that are 0 for all classes
   fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
-                                                                          c("MDC", "cells", "ignitions", "year"))]
-  if (max(fireSense_ignitionCovariates$coverSums) > 100) {
-    warning("proportional cover is exceeding 1 in some voxels")
-  }
+                                                                          c(climVar, "cells", "ignitions", "year"))]
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   if (any(fireSense_ignitionCovariates$coverSums > 1)) {
     stop("error with ignition raster aggregation")
