@@ -372,10 +372,9 @@ prepare_SpreadFit <- function(sim) {
                               userTags = c("bufferToArea"),
                               omitArgs = "cores")
 
-
-  #Clean up missing pixels - this is a temporary fix
-  #we will always have NAs because of edge pixels - will be an issue when predicting
-  # The next 1 line replaces the 8 or so lines after
+  ## Clean up missing pixels - this is a temporary fix
+  ## we will always have NAs because of edge pixels - will be an issue when predicting
+  ## The next 1 line replaces the 8 or so lines after
   fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegData$pixelID)
 
   # Post buffering, new issues --> must make sure points and buffers match
@@ -477,15 +476,13 @@ prepare_SpreadFit <- function(sim) {
   pre2011 <- yearsWithFire[yearsWithFire %in% paste0("year", min(P(sim)$fireYears):2010)]
   post2011 <- yearsWithFire[yearsWithFire %in% paste0("year", 2011:max(P(sim)$fireYears))]
 
-
-
   fbl <- rbindlist(sim$fireBufferedListDT, idcol = "year")
   rmCols <- setdiff(colnames(fbl), c("pixelID", "year"))
   set(fbl, NULL, rmCols, NULL)
   fbl <- mod$climateDT[fbl, on = c("year", "pixelID"), nomatch = NULL]
   fireSense_annualSpreadFitCovariates <- split(fbl, by = "year", keep.by = FALSE)
 
-  #prepare non-annual spread fit covariates by getting the youngAge
+  ## prepare non-annual spread fit covariates by getting the youngAge
   pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
   post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
   colsToExtract <- c("pixelID", vegCols)
@@ -499,7 +496,6 @@ prepare_SpreadFit <- function(sim) {
     na.omit(.) %>%
     as.data.table(.) %>%
     .[!duplicated(pixelID)] # remove duplicates from same pixel diff year
-
 
   #the function will do this below, and then use the data.table with location of non-forest to fill in those ages
   # pmap allows for internal debugging when there are large lists that are passed in; Map does not
