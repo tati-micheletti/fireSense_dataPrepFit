@@ -282,7 +282,7 @@ prepare_SpreadFit <- function(sim) {
 
   ## sanity check the inputs
   compareRaster(sim$rasterToMatch, sim$flammableRTM, sim$rstLCC,
-                sim$standAgeMap2001, sim$standAgeMap2011, sim$terrainCovariates)
+                sim$standAgeMap2001, sim$standAgeMap2011)
   lapply(sim$historicalClimateRasters, compareRaster, x = sim$rasterToMatch)
 
   stopifnot(
