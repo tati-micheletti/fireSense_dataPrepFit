@@ -200,12 +200,12 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-   #TODO: correct this if ignitionFuelClass and spreadFuelClass are used
+  ## TODO: correct this if ignitionFuelClass and spreadFuelClass are used
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
   spreadFuels <- sim$sppEquiv[[P(sim)$spreadFuelClassCol]]
 
   if (any(c(is.null(spreadFuels), is.na(spreadFuels),
-            is.null(igFuels), is.na(igFuels)))){
+            is.null(igFuels), is.na(igFuels)))) {
     stop("All species must have spread and ignition fuelClasses defined")
   }
 
@@ -386,9 +386,10 @@ prepare_SpreadFit <- function(sim) {
                                 userTags = c("harmonizeBufferAndPoints", P(sim)$.studyAreaName))
 
   ## drop fire years from these lists that don't have any buffer points post-harmonization
-  fireBufferedListDT[sapply(sim$spreadFirePoints, is.null)] <- NULL
-  sim$firePolys[sapply(sim$spreadFirePoints, is.null)] <- NULL
-  sim$spreadFirePoints[sapply(sim$spreadFirePoints, is.null)] <- NULL
+  omitYears <- sapply(sim$spreadFirePoints, is.null)
+  fireBufferedListDT[omitYears] <- NULL
+  sim$firePolys[omitYears] <- NULL
+  sim$spreadFirePoints[omitYears] <- NULL
 
   ## Also 2 other problems:
   ## 1. Big fire, but ignition is in non-flammable pixels e.g., lake -- bad;
