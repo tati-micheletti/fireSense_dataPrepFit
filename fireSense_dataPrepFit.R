@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9039)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9041)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -370,6 +370,12 @@ prepare_SpreadFit <- function(sim) {
                               minSize = P(sim)$minBufferSize,
                               userTags = c("bufferToArea", P(sim)$.studyAreaName),
                               omitArgs = "cores")
+
+  ## drop fire years from these lists that don't have any buffer points pre-harmonization
+  omitYears <- sapply(fireBufferedListDT, function(x) nrow(x) == 0)
+  fireBufferedListDT[omitYears] <- NULL
+  sim$firePolys[omitYears] <- NULL
+  sim$spreadFirePoints[omitYears] <- NULL
 
   ## Clean up missing pixels - this is a temporary fix
   ## we will always have NAs because of edge pixels - will be an issue when predicting
