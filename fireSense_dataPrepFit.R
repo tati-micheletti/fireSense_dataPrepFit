@@ -33,7 +33,7 @@ defineModule(sim, list(
     defineParameter("ignitionFuelClassCol", "character", "FuelClass", NA, NA,
                     "the column in `sppEquiv` that defines unique fuel classes for ignition"),
     defineParameter("minBufferSize", "numeric", 5000, NA, NA,
-                    "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the bufferToArea fn"),
+                    "Minimum size of buffer and nonbuffer. This is imposed after multiplier on the `bufferToArea` fn"),
     defineParameter("missingLCCgroup", "character", "nonForest_highFlam", NA, NA,
                     paste("if a pixel is forested but is absent from `cohortData`, it will be grouped in this class.",
                           "Must be one of the names in `sim$nonForestedLCCGroups`")),
@@ -71,10 +71,10 @@ defineModule(sim, list(
     expectsInput("cohortData2011", "data.table", sourceURL = NA,
                  paste0("Table that defines the cohorts by pixelGroup in 2011")),
     expectsInput("spreadFirePoints", "list", sourceURL = NA,
-                 paste0("list of spatialPointsDataFrame for each fire year",
-                        "with each point denoting an ignition location")),
+                 paste("named list of `SpatialPointsDataFrame`s for each fire year",
+                       "with each point denoting an ignition location.")),
     expectsInput("firePolys", "list", sourceURL = NA,
-                 paste0("List of SpatialPolygonsDataFrames representing annual fire polygons.",
+                 paste0("List of `SpatialPolygonsDataFrame`s representing annual fire polygons.",
                         "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput("firePolysForAge", "list", sourceURL = NA,
                  "firePolys used to classify timeSinceDisturbance in nonforest LCC"),
@@ -139,10 +139,10 @@ defineModule(sim, list(
     createsOutput("nonForest_timeSinceDisturbance2011", "RasterLayer",
                   "time since burn for non-forested pixels in 2011"),
     createsOutput("spreadFirePoints", "list",
-                  paste("list of spatialPolygonDataFrame objects representing annual fire centroids.",
+                  paste("Named list of `SpatialPolygonDataFrame` objects representing annual fire centroids.",
                         "This only includes fires that escaped (e.g. `size > res(flammableRTM)`.")),
     createsOutput("terrainDT", "data.table",
-                  "data.table with pixelID and relevant terrain variables used by predict models")
+                  "`data.table` with `pixelID` and relevant terrain variables used by predict models.")
   )
 ))
 
@@ -344,7 +344,7 @@ prepare_SpreadFit <- function(sim) {
                              function(year, polys = sim$firePolys, points = sim$spreadFirePoints) {
                                polys <- polys[[year]]
                                points <- points[[year]]
-                               #ensure matching IDs
+                               ## ensure matching IDs
                                points <- points[points$FIRE_ID %in% polys$FIRE_ID,]
                                polys <- polys[polys$FIRE_ID %in% points$FIRE_ID,]
                                points$FIRE_ID <- as.numeric(as.factor(points$FIRE_ID))
@@ -357,6 +357,20 @@ prepare_SpreadFit <- function(sim) {
     names(sim$firePolys) <- origNames
     names(sim$spreadFirePoints) <- origNames
   }
+
+  ## drop fires less than 1 px in size
+  pixSizeHa <- prod(res(sim$flammableRTM)) / 1e4
+  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, function(x) {
+    x <- subset(x, SIZE_HA > pixSizeHa)
+    if (nrow(x) > 0) x else NULL
+  })
+  sim$spreadFirePoints[sapply(sim$spreadFirePoints, is.null)] <- NULL
+
+  sim$firePolys <- lapply(sim$firePolys, function(x) {
+    x <- subset(x, SIZE_HA > pixSizeHa)
+    if (nrow(x) > 0) x else NULL
+  })
+  sim$firePolys[sapply(sim$firePolys, is.null)] <- NULL
 
   nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$firePolys))
   fireBufferedListDT <- Cache(bufferToArea,
@@ -820,9 +834,9 @@ plotAndMessage <- function(sim) {
   }
 
   if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
-  #may be NULL if passed by objects - add to Init?
-  #this is necessary because centroids may be fewer than fires if fire polys were small
-    min1Fire <- lapply(sim$spreadFirePoints, length) > 0
+    ## may be NULL if passed by objects - add to Init?
+    ## this is necessary because centroids may be fewer than fires if fire polys were small
+    min1Fire <- lapply(sim$spreadFirePoints, nrow) > 0
     sim$spreadFirePoints <- sim$spreadFirePoints[min1Fire]
     sim$firePolys <- sim$firePolys[min1Fire]
   }
