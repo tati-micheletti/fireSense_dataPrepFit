@@ -823,6 +823,7 @@ plotAndMessage <- function(sim) {
     #   undebug(reproducible:::dealWithRasters)
     #   undebug(reproducible:::dealWithRastersOnRecovery)
     # }, add = TRUE)
+
     sim$spreadFirePoints <- Cache(FUN = parallel::clusterApply,
                                   x = sim$firePolys,
                                   cl = clObj,
@@ -836,7 +837,7 @@ plotAndMessage <- function(sim) {
   if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
     ## may be NULL if passed by objects - add to Init?
     ## this is necessary because centroids may be fewer than fires if fire polys were small
-    min1Fire <- lapply(sim$spreadFirePoints, nrow) > 0
+    min1Fire <- lapply(sim$spreadFirePoints, length) > 0
     sim$spreadFirePoints <- sim$spreadFirePoints[min1Fire]
     sim$firePolys <- sim$firePolys[min1Fire]
   }
