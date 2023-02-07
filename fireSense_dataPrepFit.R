@@ -455,7 +455,6 @@ prepare_SpreadFit <- function(sim) {
       fpoly <- fpoly[!fpoly$ids %in% rmFireIDs,]
     }
     list(SpatialPoints = fp, FireBuffered = fpoly)
-
   })
   out22 <- purrr::transpose(out22)
   sim$spreadFirePoints <- out22$SpatialPoints
@@ -474,12 +473,22 @@ prepare_SpreadFit <- function(sim) {
     vegData[year >= 2011][., on = c("pixelID")]
   post2011Indices[is.na(year), year := 2011]
 
-  #Some pixels will be NA because the polygon includes non-flammable cells
-  #As long as these pixels are also NA in climate data, no issue
+  ## Some pixels will be NA because the polygon includes non-flammable cells
+  ## As long as these pixels are also NA in climate data, no issue
 
-  # we want to collapse both time steps for logistic regression
   fireSenseVegData <- rbind(pre2011Indices, post2011Indices)
   setnames(fireSenseVegData, "buffer", "burned")
+
+  vegCols <- setdiff(names(fireSenseVegData), c("pixelID", "burned", "ids", "year"))
+  dropCols <- names(which(apply(fireSenseVegData[, ..vegCols], 2, sum) == 0))
+
+  ## spreadFit will fail if there are empty (all zero) columns
+  if (length(dropCols) > 0) {
+    message("Dropping column(s) from spreadFit covariate table: ",
+            paste(dropCols, collapse = ", "))
+    vegCols <- vegCols[!vegCols %in% dropCols]
+    set(fireSenseVegData, NULL, dropCols, NULL)
+  }
 
   if (isTRUE(doAssertion)) {
     ttt <- table(fireSenseVegData$burned)
@@ -489,8 +498,6 @@ prepare_SpreadFit <- function(sim) {
            "Please create larger buffers around fires in fireBufferedListDT, e.g., via ",
            "fireSenseUtils::bufferToArea(..., areaMultiplier = multiplier)")
   }
-
-  vegCols <- setdiff(names(fireSenseVegData), c("pixelID", "burned", "ids", "year"))
 
   RHS <- paste(paste0(names(sim$historicalClimateRasters)), "youngAge",
                 paste0(vegCols, collapse = " + "), sep =  " + ")
