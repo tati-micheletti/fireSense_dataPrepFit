@@ -15,7 +15,7 @@ defineModule(sim, list(
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
                   "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9043)",
-                  "parallel", "raster", "sf", "sp", "spatialEco", "snow"),
+                  "parallel", "raster", "sf", "sp", "spatialEco", "snow", "terra"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("areaMultiplier", c("numeric", "function"), fireSenseUtils::multiplier, NA, NA,
@@ -458,11 +458,13 @@ prepare_SpreadFitFire_Raster <- function(sim) {
     historicalFireRaster <- historicalFireRaster
   }
 
-  compareGeom(historicalFireRaster, sim$flammableRTM)
+  terra::compareGeom(historicalFireRaster, terra::rast(sim$flammableRTM))
   #historical fire Raster is currently not in outputs - if assigned to sim here, it should be added
   # as we modify it by removing non-flammable fires.
   #TODO: discuss the above
-  historicalFireRaster[sim$flammableRTM == 0] <- NA
+  tempFlammableRTM <- rast(sim$flammableRTM)
+  historicalFireRaster <- mask(historicalFireRaster, tempFlammableRTM,
+                               maskvalues = 0, updatevalue = NA)
 
   nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$fireYears))
 
@@ -483,7 +485,9 @@ prepare_SpreadFitFire_Raster <- function(sim) {
   }
 
   #next up: generate spread fire points. no harmonization is needed with this approach :)
-  sim$spreadFirePoints <- rasterFireSpreadPoints(fireBufferDT = sim$fireBufferedListDT[1], flammableRTM = sim$flammableRTM)
+  sim$spreadFirePoints <- lapply(sim$fireBufferedListDT,
+                                 rasterFireSpreadPoints,
+                                 flammableRTM = sim$flammableRTM)
 
   #this is temporary while we migrate out of spatial/raster constructs
   sim$spreadFirePoints <- lappy(sim$spreadFirePoints, as_Spatial)
