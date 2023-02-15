@@ -182,11 +182,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       if ("fireSense_EscapeFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData")
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare) {
-        if (P(sim)$useRasterizedFireForSpread) {
-          sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitRasterData")
-        } else {
-          sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
-        }
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
       }
       sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
@@ -199,9 +195,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
     },
     prepSpreadFitData = {
       sim <- prepare_SpreadFit(sim)
-    },
-    prepSpreadFitRasterData = {
-      sim <- prepare_SpreadFitRaster(sim)
     },
     plotAndMessage = {
       sim <- plotAndMessage(sim)
@@ -305,15 +298,13 @@ prepare_SpreadFit <- function(sim) {
                 sim$standAgeMap2001, sim$standAgeMap2011)
   lapply(sim$historicalClimateRasters, compareRaster, x = sim$rasterToMatch)
 
-  stopifnot(
-    "all ignitionFirePoints are not within studyArea" = identical(
-      nrow(st_as_sf(sim$ignitionFirePoints)),
-      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
-    ),
-    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      nrow(st_as_sf(x)) == nrow(sf::st_intersection(st_as_sf(x), st_as_sf(sim$studyArea)))
-    })))
-  )
+
+  #prep the fire data
+  if (P(sim)$useRasterizedFire){
+    sim <- prepare_SpreadFitFire_Raster(sim)
+  } else {
+    sim <- prepare_SpreadFitFire_Vector(sim)
+  }
 
   ## output filenames ------------------------------------------------------------------------------
   mod$vegFile <- file.path(outputPath(sim),
@@ -350,6 +341,164 @@ prepare_SpreadFit <- function(sim) {
   vegData[missingLCC == 0, eval(P(sim)$missingLCC) := 1]
   ## TODO: when we add assertions, assert that there are no rows where missingLCC = 2
   vegData[, missingLCC := NULL]
+
+
+  ####join fire and veg data ####
+  pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
+  pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011] %>%
+    rbindlist(.) %>%
+    vegData[year < 2011][., on = c("pixelID")]
+  ## TODO, review why is.na is included here? what would be NA? pixels in fireBufferedList that aren't in vegData?
+  pre2011Indices[is.na(year), year := 2001]
+
+  post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011] %>%
+    rbindlist(.) %>%
+    vegData[year >= 2011][., on = c("pixelID")]
+  post2011Indices[is.na(year), year := 2011]
+
+  ## Some pixels will be NA because the polygon includes non-flammable cells
+  ## As long as these pixels are also NA in climate data, no issue
+
+  fireSenseVegData <- rbind(pre2011Indices, post2011Indices)
+  setnames(fireSenseVegData, "buffer", "burned")
+
+  vegCols <- setdiff(names(fireSenseVegData), c("pixelID", "burned", "ids", "year"))
+  dropCols <- names(which(apply(fireSenseVegData[, ..vegCols], 2, sum) == 0))
+
+  ## spreadFit will fail if there are empty (all zero) columns
+  if (length(dropCols) > 0) {
+    message("Dropping column(s) from spreadFit covariate table: ",
+            paste(dropCols, collapse = ", "))
+    vegCols <- vegCols[!vegCols %in% dropCols]
+    set(fireSenseVegData, NULL, dropCols, NULL)
+  }
+
+  if (isTRUE(doAssertion)) {
+    ttt <- table(fireSenseVegData$burned)
+    ratioZeroToOne <- ttt[1]/ttt[2]
+    if (ratioZeroToOne < 5)
+      stop("The number of pixels in the fire buffers should be at least 5x the number of burned pixels\n",
+           "Please create larger buffers around fires in fireBufferedListDT, e.g., via ",
+           "fireSenseUtils::bufferToArea(..., areaMultiplier = multiplier)")
+  }
+
+  RHS <- paste(paste0(names(sim$historicalClimateRasters)), "youngAge",
+                paste0(vegCols, collapse = " + "), sep =  " + ")
+
+  ## this is a funny way to get years but avoids years with 0 fires
+  years <- paste0("year", P(sim)$fireYears)
+
+  yearsWithFire <- years[years %in% names(sim$fireBufferedListDT)]
+
+  pre2011int <- as.integer(min(P(sim)$fireYears):2010)
+  post2011int <- as.integer(2011:max(P(sim)$fireYears))
+
+  pre2011 <- yearsWithFire[yearsWithFire %in% paste0("year", pre2011int)]
+  post2011 <- yearsWithFire[yearsWithFire %in% paste0("year", post2011int)]
+
+  fbl <- rbindlist(sim$fireBufferedListDT, idcol = "year")
+  rmCols <- setdiff(colnames(fbl), c("pixelID", "year"))
+  set(fbl, NULL, rmCols, NULL)
+  fbl <- mod$climateDT[fbl, on = c("year", "pixelID"), nomatch = NULL]
+  fireSense_annualSpreadFitCovariates <- split(fbl, by = "year", keep.by = FALSE)
+
+  ## prepare non-annual spread fit covariates by getting the youngAge
+  pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
+  post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
+  colsToExtract <- c("pixelID", vegCols)
+
+  nonAnnualPre2011 <- fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
+    na.omit(.) %>%
+    as.data.table(.) %>%
+    .[!duplicated(pixelID),]
+
+  nonAnnualPost2011 <- fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
+    na.omit(.) %>%
+    as.data.table(.) %>%
+    .[!duplicated(pixelID)] ## remove duplicates from same pixel diff year
+
+  ## the function will do this below, and then use the data.table with location of non-forest to fill in those ages
+  ## pmap allows for internal debugging when there are large lists that are passed in; Map does not
+  annualCovariates <- Cache(
+    purrr::pmap,
+    .l = list(
+      #years = list(c(2001:2010), c(2011:max(P(sim)$fireYears))),
+      years = list(pre2011int, post2011int),
+      annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
+                              fireSense_annualSpreadFitCovariates[post2011]),
+      standAgeMap = list(sim$nonForest_timeSinceDisturbance2001,
+                         sim$nonForest_timeSinceDisturbance2011)
+    ),
+    .f = calcYoungAge,
+    fireBufferedListDT = sim$fireBufferedListDT,
+    cutoffForYoungAge = P(sim)$cutoffForYoungAge
+  )
+
+  sim$fireSense_annualSpreadFitCovariates <- do.call(c, annualCovariates)
+
+  sim$fireSense_nonAnnualSpreadFitCovariates <- list(nonAnnualPre2011, nonAnnualPost2011)
+  names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
+                                                         paste(names(post2011Indices), collapse = "_"))
+
+  sim$fireSense_spreadFormula <- paste0("~ 0 + ", RHS)
+
+  return(invisible(sim))
+}
+
+prepare_SpreadFitFire_Raster <- function(sim) {
+
+
+  historicalFireRaster <- sim$historicalFireRaster
+
+
+  #build initial burn IDs by buffering  - then using clump(raster) or patches(terra)
+  if (inherits(historicalFireRaster, "RasterLayer")) {
+    historicalFireRaster <- terra::rast(historicalFireRaster)
+  } else {
+    historicalFireRaster <- historicalFireRaster
+  }
+
+  compareGeom(historicalFireRaster, sim$flammableRTM)
+  #historical fire Raster is currently not in outputs - if assigned to sim here, it should be added
+  # as we modify it by removing non-flammable fires.
+  #TODO: discuss the above
+  historicalFireRaster[sim$flammableRTM == 0] <- NA
+
+  nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$fireYears))
+
+  #this is analogous to buffer to area but for raster datasets as opposed to polygon
+  #the inner looping function is very similar - one difference is that non-flammable
+  #pixels do not count toward the buffer size, unlike the polygonal version.
+  sim$fireBufferedListDT <- Cache(rasterFireBufferDT, years =  P(sim)$fireYears,
+                                  fireRaster = historicalFireRaster, flammableRTM = sim$flammableRTM,
+                                  bufferForFireRaster = P(sim)$bufferForFireRaster, verb = 1,
+                                  areaMultiplier = P(sim)$areaMultiplier, minSize = P(sim)$minBufferSize,
+                                  cores = nCores, userTags = c(currentModule(sim), "rasterFireBufferDT"))
+  #TODO: test that this is the correct method for missing years
+  missingYears <- unlist(lapply(sim$fireBufferedListDT, is.null))
+
+  if (any(missingYears)){
+    actualFireYears <- P(sim)$fireYears[!missingYears]
+    sim$fireBufferedListDT <- sim$fireBufferedListDT[!missingYears]
+  }
+
+  #next up: generate spread fire points. no harmonization is needed with this approach :)
+  sim$spreadFirePoints <- rasterFireSpreadPoints(fireBufferDT = sim$fireBufferedListDT[1], flammableRTM = sim$flammableRTM)
+
+  #this is temporary while we migrate out of spatial/raster constructs
+  sim$spreadFirePoints <- lappy(sim$spreadFirePoints, as_Spatial)
+  names(sim$spreadFirePoints) <- names(sim$fireBufferedListDT)
+
+  return(invisible(sim))
+}
+
+prepare_SpreadFitFire_Vector <- function(sim){
+  #sanity check
+  stopifnot(
+    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+      nrow(st_as_sf(x)) == nrow(sf::st_intersection(st_as_sf(x), st_as_sf(sim$studyArea)))
+    })))
+  )
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
@@ -480,153 +629,18 @@ prepare_SpreadFit <- function(sim) {
   sim$spreadFirePoints <- out22$SpatialPoints
   sim$fireBufferedListDT <- out22$FireBuffered
 
-  ####join fire and veg data ####
-  pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
-  pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011] %>%
-    rbindlist(.) %>%
-    vegData[year < 2011][., on = c("pixelID")]
-  ## TODO, review why is.na is included here? what would be NA? pixels in fireBufferedList that aren't in vegData?
-  pre2011Indices[is.na(year), year := 2001]
-
-  post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011] %>%
-    rbindlist(.) %>%
-    vegData[year >= 2011][., on = c("pixelID")]
-  post2011Indices[is.na(year), year := 2011]
-
-  ## Some pixels will be NA because the polygon includes non-flammable cells
-  ## As long as these pixels are also NA in climate data, no issue
-
-  fireSenseVegData <- rbind(pre2011Indices, post2011Indices)
-  setnames(fireSenseVegData, "buffer", "burned")
-
-  vegCols <- setdiff(names(fireSenseVegData), c("pixelID", "burned", "ids", "year"))
-  dropCols <- names(which(apply(fireSenseVegData[, ..vegCols], 2, sum) == 0))
-
-  ## spreadFit will fail if there are empty (all zero) columns
-  if (length(dropCols) > 0) {
-    message("Dropping column(s) from spreadFit covariate table: ",
-            paste(dropCols, collapse = ", "))
-    vegCols <- vegCols[!vegCols %in% dropCols]
-    set(fireSenseVegData, NULL, dropCols, NULL)
-  }
-
-  if (isTRUE(doAssertion)) {
-    ttt <- table(fireSenseVegData$burned)
-    ratioZeroToOne <- ttt[1]/ttt[2]
-    if (ratioZeroToOne < 5)
-      stop("The number of pixels in the fire buffers should be at least 5x the number of burned pixels\n",
-           "Please create larger buffers around fires in fireBufferedListDT, e.g., via ",
-           "fireSenseUtils::bufferToArea(..., areaMultiplier = multiplier)")
-  }
-
-  RHS <- paste(paste0(names(sim$historicalClimateRasters)), "youngAge",
-                paste0(vegCols, collapse = " + "), sep =  " + ")
-
-  ## this is a funny way to get years but avoids years with 0 fires
-  years <- paste0("year", P(sim)$fireYears)
-  #TODO: check if fireBufferedListDT can be used here instead
-  yearsWithFire <- years[years %in% names(sim$firePolys)]
-
-  pre2011int <- as.integer(min(P(sim)$fireYears):2010)
-  post2011int <- as.integer(2011:max(P(sim)$fireYears))
-
-  pre2011 <- yearsWithFire[yearsWithFire %in% paste0("year", pre2011int)]
-  post2011 <- yearsWithFire[yearsWithFire %in% paste0("year", post2011int)]
-
-  fbl <- rbindlist(sim$fireBufferedListDT, idcol = "year")
-  rmCols <- setdiff(colnames(fbl), c("pixelID", "year"))
-  set(fbl, NULL, rmCols, NULL)
-  fbl <- mod$climateDT[fbl, on = c("year", "pixelID"), nomatch = NULL]
-  fireSense_annualSpreadFitCovariates <- split(fbl, by = "year", keep.by = FALSE)
-
-  ## prepare non-annual spread fit covariates by getting the youngAge
-  pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011]
-  post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011]
-  colsToExtract <- c("pixelID", vegCols)
-
-  nonAnnualPre2011 <- fireSenseVegData[year < 2011, .SD, .SDcols = colsToExtract] %>%
-    na.omit(.) %>%
-    as.data.table(.) %>%
-    .[!duplicated(pixelID),]
-
-  nonAnnualPost2011 <- fireSenseVegData[year >= 2011, .SD, .SDcols = colsToExtract] %>%
-    na.omit(.) %>%
-    as.data.table(.) %>%
-    .[!duplicated(pixelID)] ## remove duplicates from same pixel diff year
-
-  ## the function will do this below, and then use the data.table with location of non-forest to fill in those ages
-  ## pmap allows for internal debugging when there are large lists that are passed in; Map does not
-  annualCovariates <- Cache(
-    purrr::pmap,
-    .l = list(
-      #years = list(c(2001:2010), c(2011:max(P(sim)$fireYears))),
-      years = list(pre2011int, post2011int),
-      annualCovariates = list(fireSense_annualSpreadFitCovariates[pre2011],
-                              fireSense_annualSpreadFitCovariates[post2011]),
-      standAgeMap = list(sim$nonForest_timeSinceDisturbance2001,
-                         sim$nonForest_timeSinceDisturbance2011)
-    ),
-    .f = calcYoungAge,
-    fireBufferedListDT = sim$fireBufferedListDT,
-    cutoffForYoungAge = P(sim)$cutoffForYoungAge
-  )
-
-  sim$fireSense_annualSpreadFitCovariates <- do.call(c, annualCovariates)
-
-  sim$fireSense_nonAnnualSpreadFitCovariates <- list(nonAnnualPre2011, nonAnnualPost2011)
-  names(sim$fireSense_nonAnnualSpreadFitCovariates) <- c(paste(names(pre2011Indices), collapse = "_"),
-                                                         paste(names(post2011Indices), collapse = "_"))
-
-  sim$fireSense_spreadFormula <- paste0("~ 0 + ", RHS)
-
   return(invisible(sim))
 }
 
-prepare_SpreadFitRaster <- function(sim){
-  browser()
-  #mask out non-flammable pixels
-  sim$historicalFireRaster[sim$flammableRTM == 0] <- NA
-
-  #build initial burn IDs by buffering  - then using clump(raster) or patches(terra)
-  if (inherits(sim$historicalFireRaster, "RasterLayer")) {
-    historicalFireRaster <- terra::rast(sim$historicalFireRaster)
-  } else {
-    historicalFireRaster <- sim$historicalFireRaster
-  }
-
-  # nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$fireYears))
-  # maxCores <- parallelly::availableCores(constraints = "connections", omit = 1)
-  # cores <- min(length(P(sim)$fireYears), maxCores)
-
-  #this is analogous to buffer to area but for raster datasets as opposed to polygon
-  #It is about 80% the same but
-  #TODO: parallelize this function
-  sim$fireBufferedListDT <- Cache(lapply, P(sim)$fireYears, FUN = rasterFireBufferDT,
-                                  fireRaster = historicalFireRaster, flammableRTM = sim$flammableRTM,
-                                  bufferForFireRaster = P(sim)$bufferForFireRaster,
-                                  areaMultiplier = P(sim)$areaMultiplier, minSize = P(sim)$minBufferSize, verb = 1,
-                                  userTagsc = c(currentModule(sim), "rasterFireBufferDT"))
-  names(sim$fireBufferedListDT) <- paste0("year", P(sim)$fireYears)
-  #remove missing years - haven't tested, but I think this works..
-  missingYears <- unlist(lapply(sim$fireBufferedListDT, is.null))
-
-  if (any(missingYears)){
-    actualFireYears <- P(sim)$fireYears[!missingYears]
-    sim$fireBufferedListDT <- sim$fireBufferedListDT[!missingYears] #TODO: check this
-  }
-
-
-  #next up harmonizing the pixels
-  sim$fireSpreadPoints <- lapply(sim$fireBufferedDT, FUN = rasterFireSpreadPoints)
-
-  #this function will create points from xy, calculate nearest feature with sf.
-  # terra::xyFromCell,
-  sf::st
-
-  return(sim)
-}
-
 prepare_IgnitionFit <- function(sim) {
+
+
+  stopifnot(
+    "all ignitionFirePoints are not within studyArea" = identical(
+      nrow(st_as_sf(sim$ignitionFirePoints)),
+      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
+    ))
+
   ## account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
   forestPix <- sim$landcoverDT[rowSums == 0,]$pixelID
