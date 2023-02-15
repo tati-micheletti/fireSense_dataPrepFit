@@ -298,14 +298,6 @@ prepare_SpreadFit <- function(sim) {
                 sim$standAgeMap2001, sim$standAgeMap2011)
   lapply(sim$historicalClimateRasters, compareRaster, x = sim$rasterToMatch)
 
-
-  #prep the fire data
-  if (P(sim)$useRasterizedFire){
-    sim <- prepare_SpreadFitFire_Raster(sim)
-  } else {
-    sim <- prepare_SpreadFitFire_Vector(sim)
-  }
-
   ## output filenames ------------------------------------------------------------------------------
   mod$vegFile <- file.path(outputPath(sim),
                            paste0("fireSense_SpreadFit_veg_coeffs_", P(sim)$.studyAreaName, ".txt"))
@@ -341,6 +333,14 @@ prepare_SpreadFit <- function(sim) {
   vegData[missingLCC == 0, eval(P(sim)$missingLCC) := 1]
   ## TODO: when we add assertions, assert that there are no rows where missingLCC = 2
   vegData[, missingLCC := NULL]
+
+  mod$vegData <- vegData
+  #prep the fire data
+  if (P(sim)$useRasterizedFire){
+    sim <- prepare_SpreadFitFire_Raster(sim)
+  } else {
+    sim <- prepare_SpreadFitFire_Vector(sim)
+  }
 
 
   ####join fire and veg data ####
@@ -447,9 +447,7 @@ prepare_SpreadFit <- function(sim) {
 
 prepare_SpreadFitFire_Raster <- function(sim) {
 
-
   historicalFireRaster <- sim$historicalFireRaster
-
 
   #build initial burn IDs by buffering  - then using clump(raster) or patches(terra)
   if (inherits(historicalFireRaster, "RasterLayer")) {
@@ -490,7 +488,15 @@ prepare_SpreadFitFire_Raster <- function(sim) {
                                  flammableRTM = sim$flammableRTM)
 
   #this is temporary while we migrate out of spatial/raster constructs
-  sim$spreadFirePoints <- lappy(sim$spreadFirePoints, as_Spatial)
+  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, as_Spatial)
+  tempFun <- function(pts, year){
+    pts$YEAR <- year
+    return(pts)
+  }
+  #this is silly - we need to give it the name  with "year" prefixed
+  sim$spreadFirePoints <- Map(pts = sim$spreadFirePoints,
+                              year = names(sim$spreadFirePoints), f = tempFun)
+
   names(sim$spreadFirePoints) <- names(sim$fireBufferedListDT)
 
   return(invisible(sim))
@@ -567,6 +573,7 @@ prepare_SpreadFitFire_Vector <- function(sim){
   ## Clean up missing pixels - this is a temporary fix
   ## we will always have NAs because of edge pixels - will be an issue when predicting
   ## The next 1 line replaces the 8 or so lines after
+  vegData <- mod$vegData
   fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegData$pixelID)
 
   ## Post buffering, new issues --> must make sure points and buffers match
@@ -813,6 +820,7 @@ cleanUpMod <- function(sim) {
   mod$firePolysForAge <- NULL
   mod$fireSenseVegData <- NULL
   mod$climateDT <- NULL
+  mod$vegData <- NULL
 
   return(invisible(sim))
 }
