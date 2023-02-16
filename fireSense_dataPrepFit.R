@@ -487,15 +487,17 @@ prepare_SpreadFitFire_Raster <- function(sim) {
                                  rasterFireSpreadPoints,
                                  flammableRTM = sim$flammableRTM)
 
-  #this is temporary while we migrate out of spatial/raster constructs
+  #TODO: this is temporary while we migrate out of spatial/raster constructs
   sim$spreadFirePoints <- lapply(sim$spreadFirePoints, as_Spatial)
+
+  #the "year" prefix is added by fireSenseUtils::makeLociList - discuss what to do
   tempFun <- function(pts, year){
     pts$YEAR <- year
     return(pts)
   }
-  #this is silly - we need to give it the name  with "year" prefixed
+
   sim$spreadFirePoints <- Map(pts = sim$spreadFirePoints,
-                              year = names(sim$spreadFirePoints), f = tempFun)
+                              year = P(sim)$fireYears[!missingYears], f = tempFun)
 
   names(sim$spreadFirePoints) <- names(sim$fireBufferedListDT)
 
