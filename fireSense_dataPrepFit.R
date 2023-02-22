@@ -83,13 +83,13 @@ defineModule(sim, list(
     expectsInput("cohortData2011", "data.table", sourceURL = NA,
                  paste0("Table that defines the cohorts by pixelGroup in 2011")),
     expectsInput("spreadFirePoints", "list", sourceURL = NA,
-                 paste("named list of `SpatialPointsDataFrame`s for each fire year",
+                 paste("named list of spatial points for each fire year",
                        "with each point denoting an ignition location.")),
     expectsInput("firePolys", "list", sourceURL = NA,
-                 paste0("List of `SpatialPolygonsDataFrame`s representing annual fire polygons.",
+                 paste0("List of sf polygon objects representing annual fire polygons.",
                         "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput("firePolysForAge", "list", sourceURL = NA,
-                 "firePolys used to classify timeSinceDisturbance in nonforest LCC"),
+                 "list of fire polygons used to classify timeSinceDisturbance in nonforest LCC"),
     expectsInput("historicalFireRaster", "RasterLayer",
                  sourceURL = "https://opendata.nfis.org/downloads/forest_change/CA_Forest_Fire_1985-2020.zip",
                  "a raster with values representing fire year 1985-2020"),
@@ -504,7 +504,7 @@ prepare_SpreadFitFire_Raster <- function(sim) {
   return(invisible(sim))
 }
 
-prepare_SpreadFitFire_Vector <- function(sim){
+prepare_SpreadFitFire_Vector <- function(sim) {
   #sanity check
   stopifnot(
     "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
@@ -887,17 +887,14 @@ plotAndMessage <- function(sim) {
         if (is.null(x)) {
           return(NULL)
         } else {
-          ras <- x
-          ras$ID <- 1:NROW(ras)
-          centCoords <- rgeos::gCentroid(ras, byid = TRUE)
-          cent <- SpatialPointsDataFrame(centCoords, as.data.frame(ras))
+          cent <- st_centroid(x)
           return(cent)
         }
       }
 
       mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
       clObj <- parallel::makeCluster(type = "SOCK", mc)
-      a <- parallel::clusterEvalQ(cl = clObj, {library(raster); library(rgeos)})
+      a <- parallel::clusterEvalQ(cl = clObj, {library(sf)})
       clusterExport(cl = clObj, list("firePolys"), envir = sim)
       sim$spreadFirePoints <- Cache(FUN = parallel::clusterApply,
                                     x = sim$firePolys,
