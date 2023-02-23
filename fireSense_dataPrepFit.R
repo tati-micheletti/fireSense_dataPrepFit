@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9043)",
+                  "PredictiveEcology/fireSenseUtils@rasterizedFire (>= 0.0.5.9044)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow", "terra"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -977,17 +977,18 @@ plotAndMessage <- function(sim) {
                                                                            ".tif")))
   }
 
-  if (!suppliedElsewhere("historicalFireRaster", sim)) {
-    sim$historicalFireRaster <- Cache(prepInputs,
-                                      url = extractURL("historicalFireRaster", sim),
-                                      rasterToMatch = sim$flammableRTM,
-                                      destinationPath = dPath,
-                                      studyArea = sim$studyArea,
-                                      method = "ngb",
-                                      filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"))
-    #make sure this is near or ngb
+  if (P(sim)$useRasterizedFire){
+    if (!suppliedElsewhere("historicalFireRaster", sim)) {
+      sim$historicalFireRaster <- Cache(prepInputs,
+                                        url = extractURL("historicalFireRaster", sim),
+                                        rasterToMatch = sim$flammableRTM,
+                                        destinationPath = dPath,
+                                        studyArea = sim$studyArea,
+                                        method = "ngb",
+                                        filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"))
+      #make sure this is near or ngb
+    }
   }
-
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
     sim$nonForestedLCCGroups <- list(
       "nonForest_highFlam" = c(8, 10, 14), #shrubland, grassland, wetland
