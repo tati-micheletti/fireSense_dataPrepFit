@@ -228,16 +228,10 @@ Init <- function(sim) {
                                      nonForestedLCCGroups = sim$nonForestedLCCGroups)
 
   # cannot merge because before subsetting due to column differences over time
-  #TODO: firePolysForAge should be lists of sf... can't reliably read NFDB with sp
-  firePolysForAge <- lapply(sim$firePolysForAge[lengths(sim$firePolysForAge) > 0],
-                            FUN = st_as_sf) %>%
-    lapply(., FUN = function(x){
-      x <- x[, "YEAR"]
-    }) %>%
-    do.call(rbind, .)
 
   #TODO: spreadFit should not use this object if P(sim)$nonForestCanBeYoungAge is TRUE
   if (P(sim)$nonForestCanBeYoungAge){
+
     #if fireRaster is null, it will use firePolys
     sim$nonForest_timeSinceDisturbance2001 <- makeTSD(year = 2001,
                                                       fireRaster = sim$historicalFireRaster,
@@ -274,7 +268,7 @@ Init <- function(sim) {
   #
   # vegData <- rbindlist(list(cohorts2001, cohorts2011), use.names = TRUE)
 
-  flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = getValues(sim$flammableRTM)) %>%
+  flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = values(sim$flammableRTM, mat = FALSE)) %>%
     .[value == 1,] %>%
     .$index
   mod$climateDT <- Cache(climateRasterToDataTable,
