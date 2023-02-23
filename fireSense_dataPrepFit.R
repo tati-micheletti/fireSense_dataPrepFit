@@ -980,17 +980,18 @@ plotAndMessage <- function(sim) {
                                                                            ".tif")))
   }
 
-  if (!suppliedElsewhere("historicalFireRaster", sim)) {
-    sim$historicalFireRaster <- Cache(prepInputs,
-                                      url = extractURL("historicalFireRaster", sim),
-                                      rasterToMatch = sim$flammableRTM,
-                                      destinationPath = dPath,
-                                      studyArea = sim$studyArea,
-                                      method = "ngb",
-                                      filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"))
-    #make sure this is near or ngb
+  if (P(sim)$useRasterizedFire){
+    if (!suppliedElsewhere("historicalFireRaster", sim)) {
+      sim$historicalFireRaster <- Cache(prepInputs,
+                                        url = extractURL("historicalFireRaster", sim),
+                                        rasterToMatch = sim$flammableRTM,
+                                        destinationPath = dPath,
+                                        studyArea = sim$studyArea,
+                                        method = "ngb",
+                                        filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"))
+      #make sure this is near or ngb
+    }
   }
-
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
     sim$nonForestedLCCGroups <- list(
       "nonForest_highFlam" = c(8, 10, 14), #shrubland, grassland, wetland
