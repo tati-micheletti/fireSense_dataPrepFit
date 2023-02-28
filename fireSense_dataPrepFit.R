@@ -288,9 +288,9 @@ prepare_SpreadFit <- function(sim) {
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
   ## sanity check the inputs
-  compareRaster(sim$rasterToMatch, sim$flammableRTM, sim$rstLCC,
-                sim$standAgeMap2001, sim$standAgeMap2011)
-  lapply(sim$historicalClimateRasters, compareRaster, x = sim$rasterToMatch)
+  compareGeom(sim$rasterToMatch, sim$flammableRTM, sim$rstLCC)
+  compareGeom(sim$rasterToMatch, sim$standAgeMap2001, sim$standAgeMap2011)
+  lapply(sim$historicalClimateRasters, compareGeom, x = sim$rasterToMatch)
 
   ## output filenames ------------------------------------------------------------------------------
   mod$vegFile <- file.path(outputPath(sim),
@@ -306,18 +306,18 @@ prepare_SpreadFit <- function(sim) {
                                        cutoffForYoungAge = -1)) #youngAge will be calculated every year
 
   vegData <- lapply(vegData, FUN = function(x){
-    dt <- as.data.table(getValues(x))
+    dt <- as.data.table(values(x))
     dt[, pixelID := 1:ncell(x)]
     return(dt)
   })
-
+  gc()
   vegData[[1]][, year := 2001]
   vegData[[2]][, year := 2011]
 
   #joining with landcoverDT eliminates non-flammable pixels - every remaining pixel MUST have a value
   #join landcover separately, as the forest extent changes between 2001 and 2011
-  vegData[[1]] <- vegData[[1]][sim$landcoverDT, on = c("pixelID")]
-  vegData[[2]] <- vegData[[2]][sim$landcoverDT, on = c("pixelID")]
+  vegData[[1]] <- sim$landcoverDT[vegData[[1]], on = c("pixelID")]
+  vegData[[2]] <- sim$landcoverDT[vegData[[2]], on = c("pixelID")]
   vegData <- rbindlist(vegData)
   setcolorder(vegData, c("pixelID", "year"))
 
@@ -499,10 +499,11 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 }
 
 prepare_SpreadFitFire_Vector <- function(sim) {
+
   #sanity check
   stopifnot(
     "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      nrow(st_as_sf(x)) == nrow(sf::st_intersection(st_as_sf(x), st_as_sf(sim$studyArea)))
+      length(sf::st_contains(sim$studyArea, x)) == 1
     })))
   )
 
@@ -592,43 +593,45 @@ prepare_SpreadFitFire_Vector <- function(sim) {
   ##    solution -- pick nearest pixel in burned polygon
   ## 2. Small fire, ignition in non-flammable pixel, but NO pixel in burned polygon
   ##    is actually flammable -- remove this from data
+  #FIRE_ID is hardcoded here but since we enforce its presence, it should be permissible..
   out22 <- Map(fp = sim$spreadFirePoints, fpoly = fireBufferedListDT, function(fp, fpoly) {
-    isFlammable <- raster::extract(sim$flammableRTM, fp)
-    isFlammable[which(is.na(isFlammable))] <- FALSE
-    if (any(!isFlammable)) {
-      badStarts <- fp[!isFlammable,][[pointsIDColumn]]
-      badStartsPixels <- cbind(ids = badStarts,
-                               raster::extract(sim$flammableRTM, fp[!isFlammable,], cellnumbers = TRUE))
-      polysWBadStarts <- fpoly[ids %in% badStarts,]
+
+    FlamPoints <- as.data.table(extract(sim$flammableRTM, fp, cells = TRUE))
+    setnames(FlamPoints, c("ID", "isFlammable", "cells"))
+    FlamPoints[, isFlammable := as.numeric(as.character(isFlammable))] #otherwise factor = 1 and 2
+    FlamPoints[is.na(isFlammable), isFlammable := 0]
+    if (any(FlamPoints$isFlammable == 0)) {
+      badPoints <- FlamPoints[isFlammable == 0]
+      badStarts <- fp[FlamPoints[isFlammable == 0]$ID,]
+      FlamPoints <- FlamPoints[isFlammable == 1,] #keep the good ones
+      polysWBadStarts <- fpoly[ids %in% badPoints$ID,]
       cells <- polysWBadStarts[polysWBadStarts$buffer == 1, ]
-      flammableInPolys <- sim$flammableRTM[][cells$pixelID] == 1
+      flammableInPolys <- extract(sim$flammableRTM, cells$pixelID)[,1] == 1
       cells <- cells[flammableInPolys,]
-      rmFireIDs <- setdiff(badStarts, unique(cells$ids))
-      newSp <- numeric()
+
+      badPolys <- setdiff(polysWBadStarts$ids, cells$ids)
+
       if (any(flammableInPolys, na.rm = TRUE)) {
         xyPolys <- cbind(id = cells$ids,
                          pixelID = cells$pixelID,
-                         raster::xyFromCell(sim$flammableRTM, cells$pixelID))
-        xyPoints <- cbind(id = badStartsPixels[, "ids"],
+                         xyFromCell(sim$flammableRTM, cells$pixelID))
+        xyPoints <- cbind(id = badPoints$ID,
                           #pixelID = badStartsPixels[, "cells"],
-                          raster::xyFromCell(sim$flammableRTM, badStartsPixels[, "cells"]))
+                          xyFromCell(sim$flammableRTM, badPoints$cells))
         dd <- as.data.table(distanceFromEachPoint(to = xyPolys, from = xyPoints))
         nearestPixels <- dd[, .SD[which.min(dists)], by = "id"]
-        idsToChange <- unique(nearestPixels$id)
-
-        # Rm bad points that are just not in fires
-        # 1. create new SpatialPointsDataFrame with shifted coordinates
-        df <- as.data.frame(fp[fp[[pointsIDColumn]] %in% idsToChange,])
-        df <- df[, !colnames(df) %in% c("x", "y")]
-        newSp <- SpatialPointsDataFrame(nearestPixels[, .(x,y)], data = df, proj4string = crs(fp))
+        nearestPixels <- nearestPixels[, .(x, y, id)]
+        badStarts <- as.data.table(badStarts)
+        badStarts[, geometry := NULL]
+        badStarts <- badStarts[nearestPixels, on = c("FIRE_ID" = "id")]
+        newStarts <- st_as_sf(badStarts, coords = c("x", "y"), crs = st_crs(fp))
+        fp <- fp[!fp$FIRE_ID %in% newStarts$FIRE_ID]
+        fp <- rbind(fp, newStarts)
       }
-      # 2. rm bad points
-      fp <- fp[!fp[[pointsIDColumn]] %in% badStarts,]
-      # 3. rbind these two together
-      if (length(newSp))
-        fp <- rbind(fp, newSp)
-
-      fpoly <- fpoly[!fpoly$ids %in% rmFireIDs,]
+      # 2. rm bad points - those without ANY flammable pixels
+      if (length(badPolys) > 0){
+        fpoly <- fpoly[!ids %in% badPolys]
+      }
     }
     list(SpatialPoints = fp, FireBuffered = fpoly)
   })
