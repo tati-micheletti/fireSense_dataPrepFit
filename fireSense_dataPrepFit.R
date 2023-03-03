@@ -246,28 +246,12 @@ Init <- function(sim) {
   }
   origDTThreads <- data.table::setDTthreads(2)
 
-  #TODO: untill we standardize the youngAge treatment there is no point in this
-  #standardizing meaning calculating youngAge over the whole landscape every year.
-  #currently we do this in spread but only for fire buffers, not whole landscape.
+  #until youngAge is standardized between spread and ignition, no point in prepping veg here
+  #Currently youngAge is resolved annually in spread, but only once in ignition
+  #e.g. if a pixel ignited in 2008, its youngAge status in ignition is still determined by whether it was 15 in 2001,
+  #but its youngAge status for spread is deterimined by whether standAge < 15 in 2008
 
-  # cohorts2001 <-  Cache(castCohortData,
-  #                       cohortData = sim$cohortData2001,
-  #                       pixelGroupMap = sim$pixelGroupMap2001,
-  #                       year = 2001,
-  #                       ageMap = NULL,
-  #                       cutoffForYoungAge = P(sim)$cutoffForYoungAge,
-  #                       lcc = sim$landcoverDT,
-  #                       missingLCC = P(sim)$missingLCC)
-  # cohorts2011 <-  Cache(castCohortData, cohortData = sim$cohortData2011,
-  #                       pixelGroupMap = sim$pixelGroupMap2011,
-  #                       year = 2011,
-  #                       cutoffForYoungAge = P(sim)$cutoffForYoungAge,
-  #                       ageMap = NULL,
-  #                       lcc = sim$landcoverDT,
-  #                       missingLCC = P(sim)$missingLCC)
-  #
   # vegData <- rbindlist(list(cohorts2001, cohorts2011), use.names = TRUE)
-
   flammableIndex <- data.table(index = 1:ncell(sim$flammableRTM), value = values(sim$flammableRTM, mat = FALSE)) %>%
     .[value == 1,] %>%
     .$index
@@ -295,6 +279,8 @@ prepare_SpreadFit <- function(sim) {
   ## output filenames ------------------------------------------------------------------------------
   mod$vegFile <- file.path(outputPath(sim),
                            paste0("fireSense_SpreadFit_veg_coeffs_", P(sim)$.studyAreaName, ".txt"))
+  #when landcoverDT is included, as is the case here, non-forest pixels in cohortData are masked out
+  #this is necessary when LandR and fireSense have differing concepts of non-forest
   vegData <- Map(f = cohortsToFuelClasses,
                        cohortData = list(sim$cohortData2001, sim$cohortData2011),
                        yearCohort = list(2001, 2011),
@@ -302,8 +288,9 @@ prepare_SpreadFit <- function(sim) {
                        MoreArgs = list(sppEquiv = sim$sppEquiv,
                                        sppEquivCol = P(sim)$sppEquivCol,
                                        flammableRTM = sim$flammableRTM,
+                                       landcoverDT = sim$landcoverDT,
                                        fuelClassCol = P(sim)$spreadFuelClassCol,
-                                       cutoffForYoungAge = -1)) #youngAge will be calculated every year
+                                       cutoffForYoungAge = -1)) #youngAge will be resolved annually downstream
 
   vegData <- lapply(vegData, FUN = function(x){
     dt <- as.data.table(values(x))
@@ -512,8 +499,9 @@ prepare_SpreadFitFire_Vector <- function(sim) {
     stop("firePolys needs a numeric FIRE_ID column")
   }
 
-  if (!is.numeric(sim$firePolys[[1]]$FIRE_ID)) {
-    message("need numeric FIRE_ID column in fire polygons. Coercing to numeric...")
+  if (!is.numeric(sim$firePolys[[1]]$FIRE_ID) | !is.numeric(sim$spreadFirePoints[[1]]$FIRE_ID)) {
+
+    message("need numeric FIRE_ID column in fire polygons and points. Coercing to numeric...")
     #this is true of the current NFBB
     origNames <- names(sim$firePolys)
     PointsAndPolys <- lapply(names(sim$firePolys),
@@ -570,11 +558,11 @@ prepare_SpreadFitFire_Vector <- function(sim) {
   ## Clean up missing pixels - this is a temporary fix
   ## we will always have NAs because of edge pixels - will be an issue when predicting
   ## The next 1 line replaces the 8 or so lines after
-  vegData <- mod$vegData
   fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegData$pixelID)
 
   ## Post buffering, new issues --> must make sure points and buffers match
   pointsIDColumn <- "FIRE_ID"
+
   sim$spreadFirePoints <- Cache(harmonizeBufferAndPoints,
                                 cent = sim$spreadFirePoints,
                                 buff = fireBufferedListDT,
@@ -594,47 +582,11 @@ prepare_SpreadFitFire_Vector <- function(sim) {
   ## 2. Small fire, ignition in non-flammable pixel, but NO pixel in burned polygon
   ##    is actually flammable -- remove this from data
   #FIRE_ID is hardcoded here but since we enforce its presence, it should be permissible..
-  out22 <- Map(fp = sim$spreadFirePoints, fpoly = fireBufferedListDT, function(fp, fpoly) {
+  out22 <- Map(f = cleanUpSpreadFirePoints,
+               firePoints = sim$spreadFirePoints,
+               bufferDT = fireBufferedListDT,
+               MoreArgs = list(flammableRTM = sim$flammableRTM))
 
-    FlamPoints <- as.data.table(extract(sim$flammableRTM, fp, cells = TRUE))
-    setnames(FlamPoints, c("ID", "isFlammable", "cells"))
-    FlamPoints[, isFlammable := as.numeric(as.character(isFlammable))] #otherwise factor = 1 and 2
-    FlamPoints[is.na(isFlammable), isFlammable := 0]
-    if (any(FlamPoints$isFlammable == 0)) {
-      badPoints <- FlamPoints[isFlammable == 0]
-      badStarts <- fp[FlamPoints[isFlammable == 0]$ID,]
-      FlamPoints <- FlamPoints[isFlammable == 1,] #keep the good ones
-      polysWBadStarts <- fpoly[ids %in% badPoints$ID,]
-      cells <- polysWBadStarts[polysWBadStarts$buffer == 1, ]
-      flammableInPolys <- extract(sim$flammableRTM, cells$pixelID)[,1] == 1
-      cells <- cells[flammableInPolys,]
-
-      badPolys <- setdiff(polysWBadStarts$ids, cells$ids)
-
-      if (any(flammableInPolys, na.rm = TRUE)) {
-        xyPolys <- cbind(id = cells$ids,
-                         pixelID = cells$pixelID,
-                         xyFromCell(sim$flammableRTM, cells$pixelID))
-        xyPoints <- cbind(id = badPoints$ID,
-                          #pixelID = badStartsPixels[, "cells"],
-                          xyFromCell(sim$flammableRTM, badPoints$cells))
-        dd <- as.data.table(distanceFromEachPoint(to = xyPolys, from = xyPoints))
-        nearestPixels <- dd[, .SD[which.min(dists)], by = "id"]
-        nearestPixels <- nearestPixels[, .(x, y, id)]
-        badStarts <- as.data.table(badStarts)
-        badStarts[, geometry := NULL]
-        badStarts <- badStarts[nearestPixels, on = c("FIRE_ID" = "id")]
-        newStarts <- st_as_sf(badStarts, coords = c("x", "y"), crs = st_crs(fp))
-        fp <- fp[!fp$FIRE_ID %in% newStarts$FIRE_ID]
-        fp <- rbind(fp, newStarts)
-      }
-      # 2. rm bad points - those without ANY flammable pixels
-      if (length(badPolys) > 0){
-        fpoly <- fpoly[!ids %in% badPolys]
-      }
-    }
-    list(SpatialPoints = fp, FireBuffered = fpoly)
-  })
   out22 <- purrr::transpose(out22)
   sim$spreadFirePoints <- out22$SpatialPoints
   sim$fireBufferedListDT <- out22$FireBuffered
