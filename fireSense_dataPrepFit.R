@@ -301,21 +301,14 @@ prepare_SpreadFit <- function(sim) {
   vegData[[1]][, year := 2001]
   vegData[[2]][, year := 2011]
 
-  #joining with landcoverDT eliminates non-flammable pixels - every remaining pixel MUST have a value
-  #join landcover separately, as the forest extent changes between 2001 and 2011
-  vegData[[1]] <- sim$landcoverDT[vegData[[1]], on = c("pixelID")]
-  vegData[[2]] <- sim$landcoverDT[vegData[[2]], on = c("pixelID")]
   vegData <- rbindlist(vegData)
-  setcolorder(vegData, c("pixelID", "year"))
+  vegData <- vegData[sim$landcoverDT, on = c("pixelID")] #one to many (ie, 2)
 
-  #set 'orphaned' pixels as P(sim)$missingLCC - the forest that is not LandR forest
   lccNames <- setdiff(names(vegData), c("pixelID", "year"))
-  vegData[, missingLCC := rowSums(vegData[, .SD, .SDcols = lccNames])]
-  vegData[missingLCC == 0, eval(P(sim)$missingLCC) := 1]
-  ## TODO: when we add assertions, assert that there are no rows where missingLCC = 2
-  vegData[, missingLCC := NULL]
+  vegData[, missingLC := rowSums(vegData[, .SD, .SDcols = lccNames])]
+  vegData[missingLC == 0, eval(missingLCC) := 1]
+  vegData[, missingLC := NULL]
 
-  mod$vegData <- vegData
   #prep the fire data
   if (P(sim)$useRasterizedFire){
     sim <- prepare_SpreadFitFire_Raster(sim)
@@ -323,13 +316,12 @@ prepare_SpreadFit <- function(sim) {
     sim <- prepare_SpreadFitFire_Vector(sim)
   }
 
-
   ####join fire and veg data ####
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   pre2011Indices <- sim$fireBufferedListDT[names(sim$fireBufferedListDT) %in% pre2011] %>%
     rbindlist(.) %>%
     vegData[year < 2011][., on = c("pixelID")]
-  ## TODO, review why is.na is included here? what would be NA? pixels in fireBufferedList that aren't in vegData?
+  #I believe some year might be NA if the pixelID isn't flammable...
   pre2011Indices[is.na(year), year := 2001]
 
   post2011Indices <- sim$fireBufferedListDT[!names(sim$fireBufferedListDT) %in% pre2011] %>%
@@ -337,9 +329,10 @@ prepare_SpreadFit <- function(sim) {
     vegData[year >= 2011][., on = c("pixelID")]
   post2011Indices[is.na(year), year := 2011]
 
+  rm(vegData)
+  gc()
   ## Some pixels will be NA because the polygon includes non-flammable cells
   ## As long as these pixels are also NA in climate data, no issue
-
   fireSenseVegData <- rbind(pre2011Indices, post2011Indices)
   setnames(fireSenseVegData, "buffer", "burned")
 
@@ -622,8 +615,7 @@ prepare_IgnitionFit <- function(sim) {
                   landcoverDT = list(landcoverDT2001,landcoverDT2011),
                   MoreArgs = list(lcc = names(sim$nonForestedLCCGroups),
                                   flammableMap = sim$flammableRTM),
-                  userTags = c("putBackIntoRaster", P(sim)$.studyAreaName))  %>%
-    lapply(., FUN = brick)
+                  userTags = c("putBackIntoRaster", P(sim)$.studyAreaName))
 
   fuelClasses <- Map(f = cohortsToFuelClasses,
                      cohortData = list(sim$cohortData2001, sim$cohortData2011),
@@ -634,11 +626,6 @@ prepare_IgnitionFit <- function(sim) {
                                      landcoverDT = sim$landcoverDT,
                                      flammableRTM = sim$flammableRTM,
                                      cutoffForYoungAge = P(sim)$cutoffForYoungAge))
-
-  if (class(fuelClasses[[1]]) == "RasterStack") {
-    ## if it is already a brick, running this line will delete the values
-    fuelClasses <- lapply(fuelClasses, FUN = raster::brick)
-  }
 
   if (P(sim)$nonForestCanBeYoungAge) {
     ## this modifies the NF landcover by converting some NF to a new YA layer
@@ -652,7 +639,7 @@ prepare_IgnitionFit <- function(sim) {
 
     for (i in c(1:2)) {
       if ("youngAge" %in% names(fuelClasses[[i]])) {
-        #brick1[x] + brick2[x] stalled..
+
         YA1 <- fuelClasses[[i]]$youngAge
         YA2 <- LCCras[[i]]$youngAge
         bothYA <- YA1 + YA2
@@ -660,8 +647,9 @@ prepare_IgnitionFit <- function(sim) {
       }  else {
         fuelClasses[[i]]$youngAge <- LCCras[[i]]$youngAge
       }
+      browser()
       toKeep <- setdiff(names(LCCras[[i]]), "youngAge")
-      LCCras[[i]] <- raster::subset(LCCras[[i]], toKeep) ## to avoid double-counting
+      LCCras[[i]] <- terra::subset(LCCras[[i]], toKeep) ## to avoid double-counting
     }
   }
 
