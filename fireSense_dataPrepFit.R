@@ -589,14 +589,13 @@ prepare_SpreadFitFire_Vector <- function(sim) {
 
 prepare_IgnitionFit <- function(sim) {
 
-
   stopifnot(
     "all ignitionFirePoints are not within studyArea" = identical(
       nrow(st_as_sf(sim$ignitionFirePoints)),
       nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
     ))
 
-  ## account for forested pixels that aren't in cohortData
+  # account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
   forestPix <- sim$landcoverDT[rowSums == 0,]$pixelID
   problemPix2001 <- forestPix[is.na(sim$pixelGroupMap2001[forestPix])]
@@ -647,25 +646,20 @@ prepare_IgnitionFit <- function(sim) {
       }  else {
         fuelClasses[[i]]$youngAge <- LCCras[[i]]$youngAge
       }
-      browser()
       toKeep <- setdiff(names(LCCras[[i]]), "youngAge")
       LCCras[[i]] <- terra::subset(LCCras[[i]], toKeep) ## to avoid double-counting
     }
   }
 
-  LCCras <- lapply(LCCras, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
+  LCCras <- lapply(LCCras, aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(LCCras) <- c("year2001", "year2011")
   fuelClasses <- lapply(fuelClasses, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
   climVar <- names(climate)
-  if (length(climate) > 1) {
-    stop("need to fix ignition for multiple climate variables. contact module developers") ## TODO!
-  } else {
-    climate <- raster::stack(climate[[1]]) %>%
-      aggregate(., fact = P(sim)$igAggFactor, fun = mean)
-  }
+  climate <- aggregate(sim$historicalClimateRasters[[1]], fact = P(sim)$igAggFactor, fun = mean)
+
   ## ignition won't have same years as spread so we do not use names of init objects
   ## The reason is some years may have no significant fires, e.g. 2001 in RIA
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
@@ -684,8 +678,9 @@ prepare_IgnitionFit <- function(sim) {
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
 
   #remove any pixels that are 0 for all classes
-  fireSense_ignitionCovariates[, coverSums := rowSums(.SD), .SD = setdiff(names(fireSense_ignitionCovariates),
-                                                                          c(climVar, "cells", "ignitions", "year"))]
+  fireSense_ignitionCovariates[, coverSums := rowSums(.SD),
+                               .SD = setdiff(names(fireSense_ignitionCovariates),
+                                             c(climVar, "cells", "ignitions", "year"))]
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   if (any(fireSense_ignitionCovariates$coverSums > 1)) {
     stop("error with ignition raster aggregation")
