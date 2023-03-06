@@ -391,7 +391,6 @@ prepare_SpreadFit <- function(sim) {
     as.data.table(.) %>%
     .[!duplicated(pixelID)] ## remove duplicates from same pixel diff year
 
-  ## the function will do this below, and then use the data.table with location of non-forest to fill in those ages
   ## pmap allows for internal debugging when there are large lists that are passed in; Map does not
   annualCovariates <- Cache(
     purrr::pmap,
@@ -662,6 +661,7 @@ prepare_IgnitionFit <- function(sim) {
 
   ## ignition won't have same years as spread so we do not use names of init objects
   ## The reason is some years may have no significant fires, e.g. 2001 in RIA
+  compareGeom(climate, fuelClasses[[1]], fuelClasses[[2]])
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
 
@@ -680,7 +680,7 @@ prepare_IgnitionFit <- function(sim) {
   #remove any pixels that are 0 for all classes
   fireSense_ignitionCovariates[, coverSums := rowSums(.SD),
                                .SD = setdiff(names(fireSense_ignitionCovariates),
-                                             c(climVar, "cells", "ignitions", "year"))]
+                                             c(climVar, "cell", "ignitions", "year"))]
   fireSense_ignitionCovariates <- fireSense_ignitionCovariates[coverSums > 0]
   if (any(fireSense_ignitionCovariates$coverSums > 1)) {
     stop("error with ignition raster aggregation")
@@ -875,15 +875,13 @@ plotAndMessage <- function(sim) {
 
   if (!suppliedElsewhere("ignitionFirePoints", sim)) {
     ignitionFirePoints <- Cache(
-      fireSenseUtils::getFirePoints_NFDB_V2,
+      getFirePoints_NFDB_V2,
       studyArea = sim$studyArea,
-      rasterToMatch = sim$rasterToMatch,
       years = P(sim)$fireYears,
       NFDB_pointPath = dPath,
       userTags = c("ignitionFirePoints", P(sim)$.studyAreaName),
       plot = !is.na(P(sim)$.plotInitialTime)
-    ) ## TODO: what should we set arg redownloadIn to?
-
+    ) #default redownload means it will update annually - I think this is fine?
     sim$ignitionFirePoints <- ignitionFirePoints[ignitionFirePoints$CAUSE == "L",]
   }
 
