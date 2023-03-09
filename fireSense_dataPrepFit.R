@@ -306,7 +306,7 @@ prepare_SpreadFit <- function(sim) {
 
   lccNames <- setdiff(names(vegData), c("pixelID", "year"))
   vegData[, missingLC := rowSums(vegData[, .SD, .SDcols = lccNames])]
-  vegData[missingLC == 0, eval(missingLCC) := 1]
+  vegData[missingLC == 0, eval(P(sim)$missingLCCgroup) := 1]
   vegData[, missingLC := NULL]
 
   #prep the fire data
@@ -545,11 +545,6 @@ prepare_SpreadFitFire_Vector <- function(sim) {
   sim$firePolys[omitYears] <- NULL
   sim$spreadFirePoints[omitYears] <- NULL
 
-  ## Clean up missing pixels - this is a temporary fix
-  ## we will always have NAs because of edge pixels - will be an issue when predicting
-  ## The next 1 line replaces the 8 or so lines after
-  fireBufferedListDT <- Cache(rmMissingPixels, fireBufferedListDT, vegData$pixelID)
-
   ## Post buffering, new issues --> must make sure points and buffers match
   pointsIDColumn <- "FIRE_ID"
 
@@ -601,9 +596,9 @@ prepare_IgnitionFit <- function(sim) {
 
   ## The non-forests aren't the same between years, due to cohortData being different
   landcoverDT2001 <- copy(sim$landcoverDT)
-  landcoverDT2001[pixelID %in% problemPix2001, eval(P(sim)$missingLCC) := 1]
+  landcoverDT2001[pixelID %in% problemPix2001, eval(P(sim)$missingLCCgroup) := 1]
   landcoverDT2011 <- copy(sim$landcoverDT)
-  landcoverDT2011[pixelID %in% problemPix2011, eval(P(sim)$missingLCC) := 1]
+  landcoverDT2011[pixelID %in% problemPix2011, eval(P(sim)$missingLCCgroup) := 1]
   ## first put landcover into raster stack
   ## non-flammable pixels require zero values for non-forest landcover, not NA
   LCCras <- Cache(Map,
