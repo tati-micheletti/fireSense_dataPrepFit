@@ -90,10 +90,10 @@ defineModule(sim, list(
                         "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput("firePolysForAge", "list", sourceURL = NA,
                  "list of fire polygons used to classify timeSinceDisturbance in nonforest LCC"),
-    expectsInput("historicalFireRaster", "RasterLayer",
+    expectsInput("historicalFireRaster", "SpatRaster",
                  sourceURL = "https://opendata.nfis.org/downloads/forest_change/CA_Forest_Fire_1985-2020.zip",
                  "a raster with values representing fire year 1985-2020"),
-    expectsInput("flammableRTM", "RasterLayer", sourceURL = NA,
+    expectsInput("flammableRTM", "SpatRaster", sourceURL = NA,
                  "RTM without ice/rocks/urban/water. Flammable map with 0 and 1."),
     expectsInput("historicalClimateRasters", "list", sourceURL = NA,
                  paste("length-one list of containing a raster stack of historical climate",
@@ -105,19 +105,19 @@ defineModule(sim, list(
                  paste("a named list of non-forested landcover groups",
                        "e.g. list('wetland' = c(19, 23, 32))",
                        "These will become covariates in fireSense_IgnitionFit")),
-    expectsInput("pixelGroupMap2001", "RasterLayer", sourceURL = NA,
-                 "RasterLayer that defines the pixelGroups for cohortData table in 2001"),
-    expectsInput("pixelGroupMap2011", "RasterLayer",
-                 "RasterLayer that defines the pixelGroups for cohortData table in 2011"),
-    expectsInput("rasterToMatch", "RasterLayer", sourceURL = NA,
+    expectsInput("pixelGroupMap2001", "SpatRaster", sourceURL = NA,
+                 "SpatRaster that defines the pixelGroups for cohortData table in 2001"),
+    expectsInput("pixelGroupMap2011", "SpatRaster",
+                 "SpatRaster that defines the pixelGroups for cohortData table in 2011"),
+    expectsInput("rasterToMatch", "SpatRaster", sourceURL = NA,
                  "template raster for study area. Assumes some buffering of core area to limit edge effect of fire."),
-    expectsInput("rstLCC", "RasterLayer", sourceURL = NA,
+    expectsInput("rstLCC", "SpatRaster", sourceURL = NA,
                  "Raster of land cover. Defaults to LCC05."),
     expectsInput("sppEquiv", "data.table", sourceURL = NA,
                  "table of LandR species equivalencies"),
-    expectsInput("standAgeMap2001", "RasterLayer", sourceURL = NA,
+    expectsInput("standAgeMap2001", "SpatRaster", sourceURL = NA,
                  "map of stand age in 2001 used to create cohortData2001"),
-    expectsInput("standAgeMap2011", "RasterLayer", sourceURL = NA,
+    expectsInput("standAgeMap2011", "SpatRaster", sourceURL = NA,
                  "map of stand age in 2011 used to create cohortData2011"),
     expectsInput("studyArea", "SpatialPolygonsDataFrame", sourceURL = NA,
                  "studyArea that determines spatial boundaries of all data")
@@ -141,7 +141,7 @@ defineModule(sim, list(
                   "list of two tables with veg covariates, burn status, polyID, and pixelID"),
     createsOutput("fireSense_spreadFormula", "character",
                   "formula for spread, using climate and vegetation covariates, as character"),
-    createsOutput("ignitionFitRTM", "RasterLayer",
+    createsOutput("ignitionFitRTM", "SpatRaster",
                   paste("A (template) raster with information with regards to the spatial",
                         "resolution and geographical extent of `fireSense_ignitionCovariates`.",
                         "Used to pass this information onto `fireSense_ignitionFitted`",
@@ -149,9 +149,9 @@ defineModule(sim, list(
     createsOutput("landcoverDT", "data.table",
                   paste("data.table with `pixelID` and relevant landcover classes",
                         "that is used by predict functions.")),
-    createsOutput("nonForest_timeSinceDisturbance2001", "RasterLayer",
+    createsOutput("nonForest_timeSinceDisturbance2001", "SpatRaster",
                   "time since burn for non-forested pixels in 2001"),
-    createsOutput("nonForest_timeSinceDisturbance2011", "RasterLayer",
+    createsOutput("nonForest_timeSinceDisturbance2011", "SpatRaster",
                   "time since burn for non-forested pixels in 2011"),
     createsOutput("spreadFirePoints", "list",
                   paste("Named list of `SpatialPolygonDataFrame` objects representing annual fire centroids.",
@@ -754,7 +754,6 @@ cleanUpMod <- function(sim) {
   mod$firePolysForAge <- NULL
   mod$fireSenseVegData <- NULL
   mod$climateDT <- NULL
-  mod$vegData <- NULL
 
   return(invisible(sim))
 }
@@ -920,6 +919,7 @@ plotAndMessage <- function(sim) {
     }
   }
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
+    #TODO there should be some kind of sensible check for when this object is unsupplied and LCC is...
     sim$nonForestedLCCGroups <- list(
       "nonForest_highFlam" = c(8, 10, 14), #shrubland, grassland, wetland
       "nonForest_lowFlam" = c(11, 12, 15)) #shrub-lichen-moss + cropland. 2 barren classes are non-flammable
