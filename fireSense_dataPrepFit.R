@@ -99,7 +99,7 @@ defineModule(sim, list(
                  paste("length-one list of containing a raster stack of historical climate",
                        "list named after the variable and raster layers named as 'year<numeric year>'")),
     expectsInput("ignitionFirePoints", "list", sourceURL = NA,
-                 paste("list of spatialPolygonDataFrame objects representing annual ignition locations.",
+                 paste("list of sf polygon objects representing annual ignition locations.",
                        "This includes all fires regardless of size")),
     expectsInput("nonForestedLCCGroups", "list",
                  paste("a named list of non-forested landcover groups",
@@ -119,14 +119,14 @@ defineModule(sim, list(
                  "map of stand age in 2001 used to create cohortData2001"),
     expectsInput("standAgeMap2011", "SpatRaster", sourceURL = NA,
                  "map of stand age in 2011 used to create cohortData2011"),
-    expectsInput("studyArea", "SpatialPolygonsDataFrame", sourceURL = NA,
+    expectsInput("studyArea", "sf", sourceURL = NA,
                  "studyArea that determines spatial boundaries of all data")
   ),
   outputObjects = bindrows(
     createsOutput("fireBufferedListDT", "list",
                   "list of data.tables with fire id, pixelID, and buffer status"),
     createsOutput("firePolys", "list",
-                  "list of spatialPolygonDataFrame objects representing annual fires"),
+                  "list of sf polygon objects representing annual fires"),
     createsOutput("fireSense_annualSpreadFitCovariates", "list",
                   "list of tables with climate covariates, youngAge, burn status, polyID, and pixelID"),
     createsOutput("fireSense_escapeCovariates", "data.table",
@@ -145,7 +145,7 @@ defineModule(sim, list(
                   paste("A (template) raster with information with regards to the spatial",
                         "resolution and geographical extent of `fireSense_ignitionCovariates`.",
                         "Used to pass this information onto `fireSense_ignitionFitted`",
-                        "Needs to have number of non-NA cells as attribute (`ignitionFitRTM@data@attributes$nonNAs`).")),
+                        "Needs to have number of non-NA cells as attribute (`attributes(ignitionFitRTM)$nonNAs`).")),
     createsOutput("landcoverDT", "data.table",
                   paste("data.table with `pixelID` and relevant landcover classes",
                         "that is used by predict functions.")),
@@ -154,7 +154,7 @@ defineModule(sim, list(
     createsOutput("nonForest_timeSinceDisturbance2011", "SpatRaster",
                   "time since burn for non-forested pixels in 2011"),
     createsOutput("spreadFirePoints", "list",
-                  paste("Named list of `SpatialPolygonDataFrame` objects representing annual fire centroids.",
+                  paste("Named list of `sf` polygon objects representing annual fire centroids.",
                         "This only includes fires that escaped (e.g. `size > res(flammableRTM)`.")),
     createsOutput("terrainDT", "data.table",
                   "`data.table` with `pixelID` and relevant terrain variables used by predict models.")
@@ -461,8 +461,6 @@ prepare_SpreadFitFire_Raster <- function(sim) {
                                  flammableRTM = sim$flammableRTM)
 
   #TODO: this is temporary while we migrate out of spatial/raster constructs
-  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, as_Spatial)
-
   #the "year" prefix is added by fireSenseUtils::makeLociList - discuss what to do
   tempFun <- function(pts, year){
     pts$YEAR <- year
@@ -697,8 +695,8 @@ prepare_IgnitionFit <- function(sim) {
 
 
   #make new ignition object, ignitionFitRTM
-  sim$ignitionFitRTM <- raster(fuelClasses$year2001)
-  sim$ignitionFitRTM@data@attributes$nonNAs <- nrow(sim$fireSense_ignitionCovariates)
+  sim$ignitionFitRTM <- rast(fuelClasses$year2001)
+  attributes(sim$ignitionFitRTM)nonNAs <- nrow(sim$fireSense_ignitionCovariates)
 
   #build formula
   igCovariates <- names(sim$fireSense_ignitionCovariates)
