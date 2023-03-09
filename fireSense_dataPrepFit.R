@@ -686,7 +686,7 @@ prepare_IgnitionFit <- function(sim) {
   set(fireSense_ignitionCovariates, NULL, "coverSums", NULL)
 
   #rename cells to pixelID - though aggregated raster is not saved
-  setnames(fireSense_ignitionCovariates, old = "cells", new = "pixelID")
+  setnames(fireSense_ignitionCovariates, old = "cell", new = "pixelID")
   fireSense_ignitionCovariates[, year := as.numeric(year)]
   firstCols <- c("pixelID", "ignitions", climVar, "youngAge")
   firstCols <- firstCols[firstCols %in% names(fireSense_ignitionCovariates)]
@@ -696,7 +696,7 @@ prepare_IgnitionFit <- function(sim) {
 
   #make new ignition object, ignitionFitRTM
   sim$ignitionFitRTM <- rast(fuelClasses$year2001)
-  attributes(sim$ignitionFitRTM)nonNAs <- nrow(sim$fireSense_ignitionCovariates)
+  attributes(sim$ignitionFitRTM)$nonNAs <- nrow(sim$fireSense_ignitionCovariates)
 
   #build formula
   igCovariates <- names(sim$fireSense_ignitionCovariates)
@@ -719,21 +719,19 @@ prepare_EscapeFit <- function(sim) {
     #the datasets are essentially the same, with one column difference
     stop("Please include ignitionFit in parameter 'whichModulesToPrepare' if running EscapeFit")
   }
-
   escapeThreshHa <- prod(res(sim$flammableRTM))/10000
   escapes <- sim$ignitionFirePoints[sim$ignitionFirePoints$SIZE_HA > escapeThreshHa,]
 
   #make a template aggregated raster - values are irrelevant, only need pixelID
   aggregatedRas <- aggregate(sim$historicalClimateRasters[[1]][[1]],
                              fact = P(sim)$igAggFactor, fun = mean)
+  coords <- st_coordinates(escapes)
+  escapeCells <- cellFromXY(aggregatedRas, coords)
+  escapeDT <- as.data.table(escapes)
 
-  escapeDT <- raster::extract(aggregatedRas, escapes, cellnumber = TRUE) %>%
-    as.data.table(.) %>%
-    .[, year := escapes$YEAR] %>%
-    .[, .(year, cells)] %>%
-    .[, .(.N), .(year, cells)] %>%
-    setnames(., c("N", "cells"), c("escapes", "pixelID"))
-
+  escapeDT[, pixelID := escapeCells]
+  escapeDT <- escapeDT[, .(year, pixelID)]
+  escapeDT <- escapeDT[, .(escapes = .N), .(year, pixelID)]
   escapeDT[, year := as.numeric(year)]
   escapeDT <- escapeDT[sim$fireSense_ignitionCovariates, on = c("pixelID", "year")]
   escapeDT[is.na(escapes), escapes := 0]
