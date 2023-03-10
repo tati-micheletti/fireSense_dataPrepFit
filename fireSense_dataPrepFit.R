@@ -423,18 +423,11 @@ prepare_SpreadFitFire_Raster <- function(sim) {
   historicalFireRaster <- sim$historicalFireRaster
 
   #build initial burn IDs by buffering  - then using clump(raster) or patches(terra)
-  if (inherits(historicalFireRaster, "RasterLayer")) {
-    historicalFireRaster <- terra::rast(historicalFireRaster)
-  } else {
-    historicalFireRaster <- historicalFireRaster
-  }
-
-  terra::compareGeom(historicalFireRaster, terra::rast(sim$flammableRTM))
+  terra::compareGeom(historicalFireRaster, sim$flammableRTM)
   #historical fire Raster is currently not in outputs - if assigned to sim here, it should be added
   # as we modify it by removing non-flammable fires.
-  #TODO: discuss the above
-  tempFlammableRTM <- rast(sim$flammableRTM)
-  historicalFireRaster <- mask(historicalFireRaster, tempFlammableRTM,
+
+  historicalFireRaster <- mask(historicalFireRaster, sim$flammableRTM,
                                maskvalues = 0, updatevalue = NA)
 
   nCores <- ifelse(grepl("Windows", Sys.info()[["sysname"]]), 1, length(sim$fireYears))
