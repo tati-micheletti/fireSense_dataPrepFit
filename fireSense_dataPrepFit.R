@@ -683,7 +683,8 @@ prepare_IgnitionFit <- function(sim) {
 
 
   #make new ignition object, ignitionFitRTM
-  sim$ignitionFitRTM <- rast(fuelClasses$year2001)
+  sim$ignitionFitRTM <- rast(fuelClasses$year2001[[1]])
+  sim$ignitionFitRTM <- setValues(sim$ignitionFitRTM, 1) #avoids a warning
   attributes(sim$ignitionFitRTM)$nonNAs <- nrow(sim$fireSense_ignitionCovariates)
 
   #build formula
@@ -898,6 +899,7 @@ plotAndMessage <- function(sim) {
                                         destinationPath = dPath,
                                         studyArea = sim$studyArea,
                                         method = "ngb",
+                                        fun = "rast",
                                         filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"))
       #make sure this is near or ngb
     }
