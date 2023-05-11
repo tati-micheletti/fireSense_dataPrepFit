@@ -898,9 +898,9 @@ plotAndMessage <- function(sim) {
                                         rasterToMatch = sim$flammableRTM,
                                         destinationPath = dPath,
                                         studyArea = sim$studyArea,
-                                        method = "ngb",
-                                        fun = "rast",
-                                        filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"))
+                                        method = "near",
+                                        filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"),
+                                        userTags = c("historicalFireRaster", P(sim)$.studyAreaName))
       #make sure this is near or ngb
     }
   }
