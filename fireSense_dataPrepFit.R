@@ -717,7 +717,7 @@ prepare_EscapeFit <- function(sim) {
   coords <- st_coordinates(escapes)
   escapeCells <- cellFromXY(aggregatedRas, coords)
   escapeDT <- as.data.table(escapes)
-
+  setnames(escapeDT, "YEAR", "year")
   escapeDT[, pixelID := escapeCells]
   escapeDT <- escapeDT[, .(year, pixelID)]
   escapeDT <- escapeDT[, .(escapes = .N), .(year, pixelID)]
@@ -731,6 +731,10 @@ prepare_EscapeFit <- function(sim) {
   LHS <- paste0("cbind(escapes, ignitions - escapes) ~ ")
   RHS <- paste0(escapeVars, collapse = " + ")
   sim$fireSense_escapeFormula <- paste0(LHS, RHS, " - 1")
+
+  if (any(sim$fireSense_escapeCovariates$escapes > sim$fireSense_escapeCovariates$ignitions)){
+    stop("issue with escapes outnumbering ignitions in a pixel - contact module creators")
+  }
 
   return(invisible(sim))
 }
