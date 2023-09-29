@@ -12,9 +12,11 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
+  # loadOrder = list(after = c("Biomass_borealDataPrep")),
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
-                  "PredictiveEcology/fireSenseUtils@terra-migration (>= 0.0.5.9045)",
+                  "PredictiveEcology/SpaDES.project@transition",
+                  "PredictiveEcology/fireSenseUtils@terra-migration (>= 0.0.5.9046)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow", "terra"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -778,16 +780,22 @@ plotAndMessage <- function(sim) {
            suppliedElsewhere("pixelGroupMap2011", sim),
            suppliedElsewhere("pixelGroupMap2001", sim),
            suppliedElsewhere("cohortData2001", sim))) {
-    stop("Stop - need cohortData and pixelGroupMap objects - contact module creators")
+    # This runs simInitAndSpades if needed
+    sim <- runBorealDP_forCohortData(sim)
   }
 
   if (!P(sim)$useRasterizedFireForSpread) {
     if (!suppliedElsewhere("firePolys", sim) | !suppliedElsewhere("firePolysForAge", sim)) {
       # don't want to needlessly postProcess the same firePolys objects
 
+      saNotLatLong <- if (isTRUE(sf::st_is_longlat(sim$studyArea))) {
+        terra::project(sim$studyArea, terra::crs(sim$rasterToMatch))
+      } else {
+        sim$studyArea
+      }
       allFirePolys <- Cache(fireSenseUtils::getFirePolygons,
                             years = c(min(P(sim)$fireYears - P(sim)$cutoffForYoungAge):max(P(sim)$fireYears)),
-                            studyArea = sim$studyArea,
+                            studyArea = saNotLatLong,
                             destinationPath = dPath,
                             useInnerCache = TRUE,
                             userTags = c(cacheTags, "firePolys", paste0("years:", range(P(sim)$fireYears))))
@@ -825,6 +833,7 @@ plotAndMessage <- function(sim) {
       stopCluster(clObj)
       names(sim$spreadFirePoints) <- names(sim$firePolys)
     }
+    browser()
 
     if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
       ## may be NULL if passed by objects - add to Init?
@@ -922,4 +931,54 @@ rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
   fbldt <- rbindlist(fbldt, idcol = "year")
   fbldt <- fbldt[pixelID %in% unique(pixelIDsAllowed)]
   fireBufferedListDT <- split(fbldt, by = "year", keep.by = FALSE)
+}
+
+
+runBorealDP_forCohortData <- function(sim) {
+  neededModule <- "Biomass_borealDataPrep"
+  pathsLocal <- paths(sim)
+  if (!neededModule %in% modules(sim)) {
+    Require::Install("PredictiveEcology/SpaDES.project@transition")
+    modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
+    SpaDES.project::getModule(file.path("PredictiveEcology", neededModule), 
+                              modulePath = modulePathLocal)
+    pathsLocal$modulePath <- modulePathLocal
+    
+  }
+  cohDat <- "cohortData"
+  pixGM <- "pixelGroupMap"
+  saMap <- "standAgeMap"
+  neededYears <- c(2001, 2011)
+  if (!is.null(sim$cohortData)) {
+    alreadyDone <- P(sim, "dataYear", neededModule)
+    cohDatObj <- paste0(cohDat, alreadyDone)
+    pixGrpMap <- paste0(pixGM, alreadyDone)
+    saObj <- paste0(saMap, alreadyDone)
+    sim[[cohDatObj]] <- sim[[cohDat]]
+    sim[[pixGrpMap]] <- sim[[pixGM]]
+    sim[[saObj]] <- sim[[saMap]]
+    
+    neededYears <- setdiff(neededYears, alreadyDone)
+  } 
+  objsNeeded <- setdiff(objects(sim), "standAgeMap")
+  objsNeeded <- mget(objsNeeded, envir = envir(sim))
+  cds <- lapply(neededYears, function(ny) {
+    parms <- list()
+    parms[[neededModule]] <- P(sim, module = neededModule)
+    parms[[neededModule]][["dataYear"]] <- ny
+    
+    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal, 
+                                                 params = parms,
+                                                 modules = neededModule),
+                                            objsNeeded))
+    cohDatObj <- paste0(cohDat, ny)
+    pixGrpMap <- paste0(pixGM, ny)
+    saObj <- paste0(saMap, ny)
+    out[[cohDatObj]] <- sim[[cohDat]]
+    out[[pixGrpMap]] <- sim[[pixGM]]
+    out[[saObj]] <- sim[[saMap]]
+    mget(c(cohDatObj, pixGrpMap, saObj), envir = envir(out))
+  })
+  lapply(cds, function(cd) list2env(cd, envir = envir(sim)))
+  sim
 }
