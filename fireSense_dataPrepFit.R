@@ -833,8 +833,7 @@ plotAndMessage <- function(sim) {
       stopCluster(clObj)
       names(sim$spreadFirePoints) <- names(sim$firePolys)
     }
-    browser()
-
+    
     if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
       ## may be NULL if passed by objects - add to Init?
       ## this is necessary because centroids may be fewer than fires if fire polys were small
@@ -940,8 +939,8 @@ runBorealDP_forCohortData <- function(sim) {
   if (!neededModule %in% modules(sim)) {
     Require::Install("PredictiveEcology/SpaDES.project@transition")
     modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
-    SpaDES.project::getModule(file.path("PredictiveEcology", neededModule), 
-                              modulePath = modulePathLocal)
+    SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@terra-migration")), 
+                              modulePath = modulePathLocal, overwrite = TRUE)
     pathsLocal$modulePath <- modulePathLocal
     
   }
@@ -960,6 +959,8 @@ runBorealDP_forCohortData <- function(sim) {
     
     neededYears <- setdiff(neededYears, alreadyDone)
   } 
+  if (is.null(sim$studyAreaLarge))
+    sim$studyAreaLarge <- sim$studyArea
   objsNeeded <- setdiff(objects(sim), "standAgeMap")
   objsNeeded <- mget(objsNeeded, envir = envir(sim))
   cds <- lapply(neededYears, function(ny) {
