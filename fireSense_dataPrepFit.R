@@ -157,9 +157,7 @@ defineModule(sim, list(
                   "time since burn for non-forested pixels in 2011"),
     createsOutput("spreadFirePoints", "list",
                   paste("Named list of `sf` polygon objects representing annual fire centroids.",
-                        "This only includes fires that escaped (e.g. `size > res(flammableRTM)`.")),
-    createsOutput("terrainDT", "data.table",
-                  "`data.table` with `pixelID` and relevant terrain variables used by predict models.")
+                        "This only includes fires that escaped (e.g. `size > res(flammableRTM)`."))
   )
 ))
 
@@ -961,17 +959,25 @@ runBorealDP_forCohortData <- function(sim) {
   } 
   if (is.null(sim$studyAreaLarge))
     sim$studyAreaLarge <- sim$studyArea
-  objsNeeded <- setdiff(objects(sim), "standAgeMap")
+  ecoFile <- ifelse(is.null(sim$ecoregionRst), "ecoregionLayer", "ecoregionRst")
+  objsNeeded <- c(ecoFile, 
+                  "rasterToMatchLarge", "rasterToMatch", 
+                  "studyAreaLarge", "studyArea", 
+                  "species", "speciesTable", "sppEquiv")
   objsNeeded <- mget(objsNeeded, envir = envir(sim))
-  cds <- lapply(neededYears, function(ny) {
+
+  cds <- lapply(neededYears, function(ny, objs = objsNeeded) {
     parms <- list()
+    #if needdModule is vectorized - we will have to rethink
     parms[[neededModule]] <- P(sim, module = neededModule)
     parms[[neededModule]][["dataYear"]] <- ny
-    
+    parms[[neededModule]][["exportModels"]] <- "none"
+
     out <- do.call(simInitAndSpades, append(list(paths = pathsLocal, 
                                                  params = parms,
                                                  modules = neededModule),
-                                            objsNeeded))
+                                            objs))
+
     cohDatObj <- paste0(cohDat, ny)
     pixGrpMap <- paste0(pixGM, ny)
     saObj <- paste0(saMap, ny)
