@@ -159,9 +159,7 @@ defineModule(sim, list(
                   "time since burn for non-forested pixels in 2011"),
     createsOutput("spreadFirePoints", "list",
                   paste("Named list of `sf` polygon objects representing annual fire centroids.",
-                        "This only includes fires that escaped (e.g. `size > res(flammableRTM)`.")),
-    createsOutput("terrainDT", "data.table",
-                  "`data.table` with `pixelID` and relevant terrain variables used by predict models.")
+                        "This only includes fires that escaped (e.g. `size > res(flammableRTM)`."))
   )
 ))
 
@@ -177,17 +175,20 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
         stop("unrecognized module to prepare - review parameter whichModulesToPrepare")
         #the camelcase is still different with FS from LandR Biomass
       }
+      
+      # schedule future event(s)
+      if ("fireSense_IgnitionFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepIgnitionFitData", eventPriority = 1)
+      if ("fireSense_EscapeFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData", eventPriority = 1)
+      if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare) {
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData", eventPriority = 1)
+      }
+      
       # do stuff for this event
       sim <- Init(sim)
 
-      # schedule future event(s)
-      if ("fireSense_IgnitionFit" %in% P(sim)$whichModulesToPrepare)
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepIgnitionFitData")
-      if ("fireSense_EscapeFit" %in% P(sim)$whichModulesToPrepare)
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData")
-      if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare) {
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
-      }
+ 
       sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
     },
@@ -217,7 +218,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  ## TODO: correct this if ignitionFuelClass and spreadFuelClass are used
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
   spreadFuels <- sim$sppEquiv[[P(sim)$spreadFuelClassCol]]
 
@@ -474,12 +474,13 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 
 prepare_SpreadFitFire_Vector <- function(sim) {
 
-  #sanity check
-  stopifnot(
-    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      length(sf::st_contains(sim$studyArea, x)) == 1
-    })))
-  )
+  # #sanity check
+  #TODO: come up with terra solution
+  # stopifnot(
+  #   "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+  #     length(sf::st_contains(sim$studyArea, x)) == 1
+  #   })))
+  # )
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
@@ -963,17 +964,25 @@ runBorealDP_forCohortData <- function(sim) {
   }
   if (is.null(sim$studyAreaLarge))
     sim$studyAreaLarge <- sim$studyArea
-  objsNeeded <- setdiff(objects(sim), "standAgeMap")
+  ecoFile <- ifelse(is.null(sim$ecoregionRst), "ecoregionLayer", "ecoregionRst")
+  objsNeeded <- c(ecoFile, 
+                  "rasterToMatchLarge", "rasterToMatch", 
+                  "studyAreaLarge", "studyArea", 
+                  "species", "speciesTable", "sppEquiv")
   objsNeeded <- mget(objsNeeded, envir = envir(sim))
-  cds <- lapply(neededYears, function(ny) {
+
+  cds <- lapply(neededYears, function(ny, objs = objsNeeded) {
     parms <- list()
+    #if needdModule is vectorized - we will have to rethink
     parms[[neededModule]] <- P(sim, module = neededModule)
     parms[[neededModule]][["dataYear"]] <- ny
+    parms[[neededModule]][["exportModels"]] <- "none"
 
-    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal,
+    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal, 
                                                  params = parms,
                                                  modules = neededModule),
-                                            objsNeeded))
+                                            objs))
+
     cohDatObj <- paste0(cohDat, ny)
     pixGrpMap <- paste0(pixGM, ny)
     saObj <- paste0(saMap, ny)
