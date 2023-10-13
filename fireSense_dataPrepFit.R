@@ -472,12 +472,13 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 
 prepare_SpreadFitFire_Vector <- function(sim) {
 
-  #sanity check
-  stopifnot(
-    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      length(sf::st_contains(sim$studyArea, x)) == 1
-    })))
-  )
+  # #sanity check
+  #TODO: come up with terra solution
+  # stopifnot(
+  #   "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+  #     length(sf::st_contains(sim$studyArea, x)) == 1
+  #   })))
+  # )
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
