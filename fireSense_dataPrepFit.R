@@ -7,17 +7,19 @@ defineModule(sim, list(
     person(c("Alex", "M"), "Chubaty", role = c("ctb"), email = "achubaty@for-cast.ca")
   ),
   childModules = character(0),
-  version = list(SpaDES.core = "1.0.4.9003", fireSense_dataPrepFit = "0.0.0.9001"),
+  version = list(fireSense_dataPrepFit = "1.0.0"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   # loadOrder = list(after = c("Biomass_borealDataPrep")),
-  reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
-                  "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
+  reqdPkgs = list("data.table", "fastDummies",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9050)",
+                  "ggplot2", "parallel", "purrr", "raster", "sf", "sp",
+                  "PredictiveEcology/SpaDES.core@development (>= 2.0.2.9007)",
                   "PredictiveEcology/SpaDES.project@transition",
-                  "PredictiveEcology/fireSenseUtils@terra-migration (>= 0.0.5.9046)",
-                  "parallel", "raster", "sf", "sp", "spatialEco", "snow", "terra"),
+                  "PredictiveEcology/SpaDES.tools (>= 2.0.4.9002)",
+                  "spatialEco", "snow", "terra"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("areaMultiplier", c("numeric", "function"), fireSenseUtils::multiplier, NA, NA,
@@ -47,7 +49,7 @@ defineModule(sim, list(
                           "Must be one of the names in `sim$nonForestedLCCGroups`")),
     defineParameter("nonflammableLCC", "numeric", c(13, 16, 17, 18, 19), NA, NA,
                     "non-flammable LCC in `sim$rstLCC`."),
-    defineParameter(name = "nonForestCanBeYoungAge", class = "logical", TRUE, NA, NA,
+    defineParameter("nonForestCanBeYoungAge", "logical", TRUE, NA, NA,
                     "if TRUE, burned non-forest will be treated as youngAge"),
     defineParameter("sppEquivCol", "character", "LandR", NA, NA,
                     "column name in sppEquiv object that defines unique species in cohortData"),
@@ -833,7 +835,7 @@ plotAndMessage <- function(sim) {
       stopCluster(clObj)
       names(sim$spreadFirePoints) <- names(sim$firePolys)
     }
-    
+
     if (all(!is.null(sim$spreadFirePoints), !is.null(sim$firePolys))) {
       ## may be NULL if passed by objects - add to Init?
       ## this is necessary because centroids may be fewer than fires if fire polys were small
@@ -939,10 +941,10 @@ runBorealDP_forCohortData <- function(sim) {
   if (!neededModule %in% modules(sim)) {
     Require::Install("PredictiveEcology/SpaDES.project@transition")
     modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
-    SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@terra-migration")), 
+    SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@terra-migration")),
                               modulePath = modulePathLocal, overwrite = TRUE)
     pathsLocal$modulePath <- modulePathLocal
-    
+
   }
   cohDat <- "cohortData"
   pixGM <- "pixelGroupMap"
@@ -956,9 +958,9 @@ runBorealDP_forCohortData <- function(sim) {
     sim[[cohDatObj]] <- sim[[cohDat]]
     sim[[pixGrpMap]] <- sim[[pixGM]]
     sim[[saObj]] <- sim[[saMap]]
-    
+
     neededYears <- setdiff(neededYears, alreadyDone)
-  } 
+  }
   if (is.null(sim$studyAreaLarge))
     sim$studyAreaLarge <- sim$studyArea
   objsNeeded <- setdiff(objects(sim), "standAgeMap")
@@ -967,8 +969,8 @@ runBorealDP_forCohortData <- function(sim) {
     parms <- list()
     parms[[neededModule]] <- P(sim, module = neededModule)
     parms[[neededModule]][["dataYear"]] <- ny
-    
-    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal, 
+
+    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal,
                                                  params = parms,
                                                  modules = neededModule),
                                             objsNeeded))
