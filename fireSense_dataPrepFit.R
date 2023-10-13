@@ -16,7 +16,7 @@ defineModule(sim, list(
   reqdPkgs = list("data.table", "fastDummies", "ggplot2", "purrr", "SpaDES.tools",
                   "PredictiveEcology/SpaDES.core@development (>= 1.0.6.9016)",
                   "PredictiveEcology/SpaDES.project@transition",
-                  "PredictiveEcology/fireSenseUtils@terra-migration (>= 0.0.5.9046)",
+                  "PredictiveEcology/fireSenseUtils@terra-migration (>= 0.0.5.9050)",
                   "parallel", "raster", "sf", "sp", "spatialEco", "snow", "terra"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -173,17 +173,20 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
         stop("unrecognized module to prepare - review parameter whichModulesToPrepare")
         #the camelcase is still different with FS from LandR Biomass
       }
+      
+      # schedule future event(s)
+      if ("fireSense_IgnitionFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepIgnitionFitData", eventPriority = 1)
+      if ("fireSense_EscapeFit" %in% P(sim)$whichModulesToPrepare)
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData", eventPriority = 1)
+      if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare) {
+        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData", eventPriority = 1)
+      }
+      
       # do stuff for this event
       sim <- Init(sim)
 
-      # schedule future event(s)
-      if ("fireSense_IgnitionFit" %in% P(sim)$whichModulesToPrepare)
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepIgnitionFitData")
-      if ("fireSense_EscapeFit" %in% P(sim)$whichModulesToPrepare)
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepEscapeFitData")
-      if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare) {
-        sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData")
-      }
+ 
       sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
     },
@@ -213,7 +216,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  ## TODO: correct this if ignitionFuelClass and spreadFuelClass are used
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
   spreadFuels <- sim$sppEquiv[[P(sim)$spreadFuelClassCol]]
 
