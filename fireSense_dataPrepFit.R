@@ -16,7 +16,7 @@ defineModule(sim, list(
   reqdPkgs = list("data.table", "fastDummies",
                   "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9050)",
                   "ggplot2", "parallel", "purrr", "raster", "sf", "sp",
-                  "PredictiveEcology/LandR@development (>= 1.1.0.9070)",
+                  "PredictiveEcology/LandR@development (>= 1.1.0.9073)",
                   "PredictiveEcology/SpaDES.core@development (>= 2.0.2.9006)",
                   "PredictiveEcology/SpaDES.project@transition",
                   "PredictiveEcology/SpaDES.tools (>= 2.0.4.9002)",
