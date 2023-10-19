@@ -903,8 +903,8 @@ plotAndMessage <- function(sim) {
       year = year,
       destinationPath = dPath,
       # studyArea = sim$studyArea,
-      to = sim$rasterToMatch
-      filename2 = file.path(dPath, paste0("rstLCC_", year, "_", P(sim)$.studyAreaName, ".tif")),
+      to = sim$rasterToMatch,
+      filename2 = file.path(dPath, paste0("rstLCC_", year, "_", P(sim)$.studyAreaName, ".tif"))
       #useCache = TRUE
       ))
   }
