@@ -16,6 +16,7 @@ defineModule(sim, list(
   reqdPkgs = list("data.table", "fastDummies",
                   "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9050)",
                   "ggplot2", "parallel", "purrr", "raster", "sf", "sp",
+                  "PredictiveEcology/LandR@development (>= 1.1.0.9070)",
                   "PredictiveEcology/SpaDES.core@development (>= 2.0.2.9006)",
                   "PredictiveEcology/SpaDES.project@transition",
                   "PredictiveEcology/SpaDES.tools (>= 2.0.4.9002)",
@@ -175,7 +176,7 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
         stop("unrecognized module to prepare - review parameter whichModulesToPrepare")
         #the camelcase is still different with FS from LandR Biomass
       }
-      
+
       # schedule future event(s)
       if ("fireSense_IgnitionFit" %in% P(sim)$whichModulesToPrepare)
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepIgnitionFitData", eventPriority = 1)
@@ -184,11 +185,11 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       if ("fireSense_SpreadFit" %in% P(sim)$whichModulesToPrepare) {
         sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "prepSpreadFitData", eventPriority = 1)
       }
-      
+
       # do stuff for this event
       sim <- Init(sim)
 
- 
+
       sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
     },
@@ -286,15 +287,15 @@ prepare_SpreadFit <- function(sim) {
   #when landcoverDT is included, as is the case here, non-forest pixels in cohortData are masked out
   #this is necessary when LandR and fireSense have differing concepts of non-forest
   vegData <- Map(f = cohortsToFuelClasses,
-                       cohortData = list(sim$cohortData2001, sim$cohortData2011),
-                       yearCohort = list(2001, 2011),
-                       pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
-                       MoreArgs = list(sppEquiv = sim$sppEquiv,
-                                       sppEquivCol = P(sim)$sppEquivCol,
-                                       flammableRTM = sim$flammableRTM,
-                                       landcoverDT = sim$landcoverDT,
-                                       fuelClassCol = P(sim)$spreadFuelClassCol,
-                                       cutoffForYoungAge = -1)) #youngAge will be resolved annually downstream
+                 cohortData = list(sim$cohortData2001, sim$cohortData2011),
+                 yearCohort = list(2001, 2011),
+                 pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
+                 MoreArgs = list(sppEquiv = sim$sppEquiv,
+                                 sppEquivCol = P(sim)$sppEquivCol,
+                                 flammableRTM = sim$flammableRTM,
+                                 landcoverDT = sim$landcoverDT,
+                                 fuelClassCol = P(sim)$spreadFuelClassCol,
+                                 cutoffForYoungAge = -1)) #youngAge will be resolved annually downstream
 
   vegData <- lapply(vegData, FUN = function(x){
     dt <- as.data.table(values(x))
@@ -361,7 +362,7 @@ prepare_SpreadFit <- function(sim) {
   }
 
   RHS <- paste(paste0(names(sim$historicalClimateRasters)), "youngAge",
-                paste0(vegCols, collapse = " + "), sep =  " + ")
+               paste0(vegCols, collapse = " + "), sep =  " + ")
 
   ## this is a funny way to get years but avoids years with 0 fires
   years <- paste0("year", P(sim)$fireYears)
@@ -620,11 +621,11 @@ prepare_IgnitionFit <- function(sim) {
     ## this modifies the NF landcover by converting some NF to a new YA layer
     ## it must be done before aggregating
     LCCras <- Map(f = calcNonForestYoungAge,
-                     landcoverDT = list(landcoverDT2001, landcoverDT2011),
-                     NFTSD = list(sim$nonForest_timeSinceDisturbance2001,
-                                  sim$nonForest_timeSinceDisturbance2011),
-                     LCCras = list(LCCras[[1]], LCCras[[2]]),
-                     MoreArgs = list(cutoffForYoungAge = P(sim)$cutoffForYoungAge))
+                  landcoverDT = list(landcoverDT2001, landcoverDT2011),
+                  NFTSD = list(sim$nonForest_timeSinceDisturbance2001,
+                               sim$nonForest_timeSinceDisturbance2011),
+                  LCCras = list(LCCras[[1]], LCCras[[2]]),
+                  MoreArgs = list(cutoffForYoungAge = P(sim)$cutoffForYoungAge))
 
     for (i in c(1:2)) {
       if ("youngAge" %in% names(fuelClasses[[i]])) {
@@ -894,11 +895,12 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("rstLCC", sim)) {
+    year <- 2010
     sim$rstLCC <- prepInputsLCC(
-      year = 2010,
+      year = year,
       destinationPath = dPath,
       studyArea = sim$studyArea,
-      filename2 = file.path(dPath, paste0("rstLCC_", P(sim)$.studyAreaName, ".tif")),
+      filename2 = file.path(dPath, paste0("rstLCC_", year, "_", P(sim)$.studyAreaName, ".tif")),
       useCache = TRUE)
   }
 
@@ -909,7 +911,7 @@ plotAndMessage <- function(sim) {
   if (!suppliedElsewhere("flammableRTM", sim)) {
     sim$flammableRTM <- defineFlammable(sim$rstLCC,
                                         nonFlammClasses = P(sim)$nonflammableLCC,
-                                        mask = sim$rasterToMatch,
+                                        to = sim$rasterToMatch,
                                         filename2 = file.path(dPath,paste0("flammableRTM_",
                                                                            P(sim)$.studyAreaName,
                                                                            ".tif")))
@@ -974,9 +976,9 @@ runBorealDP_forCohortData <- function(sim) {
   if (is.null(sim$studyAreaLarge))
     sim$studyAreaLarge <- sim$studyArea
   ecoFile <- ifelse(is.null(sim$ecoregionRst), "ecoregionLayer", "ecoregionRst")
-  objsNeeded <- c(ecoFile, 
-                  "rasterToMatchLarge", "rasterToMatch", 
-                  "studyAreaLarge", "studyArea", 
+  objsNeeded <- c(ecoFile,
+                  "rasterToMatchLarge", "rasterToMatch",
+                  "studyAreaLarge", "studyArea",
                   "species", "speciesTable", "sppEquiv")
   objsNeeded <- intersect(ls(sim), objsNeeded)
   objsNeeded <- mget(objsNeeded, envir = envir(sim))
@@ -988,7 +990,7 @@ runBorealDP_forCohortData <- function(sim) {
     parms[[neededModule]][["dataYear"]] <- ny
     parms[[neededModule]][["exportModels"]] <- "none"
 
-    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal, 
+    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal,
                                                  params = parms,
                                                  modules = neededModule),
                                             objs))
