@@ -764,13 +764,21 @@ plotAndMessage <- function(sim) {
 }
 
 .inputObjects <- function(sim) {
-  cacheTags <- c(currentModule(sim), P(sim)$.studyAreaName)
-  dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
-  message(currentModule(sim), ": using dataPath '", dPath, "'.")
-
   if (!suppliedElsewhere("studyArea", sim)) {
     stop("Please supply study area - this object is key")
   }
+  if (!suppliedElsewhere("sppEquiv", sim)) {
+    sp <- LandR::speciesInStudyArea(sim$studyArea)
+    sp <- LandR::equivalentName(sp$speciesList, df = sppEquivalencies_CA, column = Par$sppEquivCol)
+    sim$sppEquiv <- sppEquivalencies_CA[get(Par$sppEquivCol) %in% sp]
+  }
+
+  if (is.null(P(sim)$.studyAreaName)) {
+    P(sim)$.studyAreaName <- studyAreaName(sim$studyArea)
+  }
+  cacheTags <- c(currentModule(sim), P(sim)$.studyAreaName)
+  dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
+  message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
     sim$rasterToMatch <- LandR::prepInputsLCC(year = 2005, ## TODO: use 2010
