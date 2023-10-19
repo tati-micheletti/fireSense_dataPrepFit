@@ -767,8 +767,9 @@ plotAndMessage <- function(sim) {
   if (!suppliedElsewhere("studyArea", sim)) {
     stop("Please supply study area - this object is key")
   }
+
   if (!suppliedElsewhere("sppEquiv", sim)) {
-    sp <- LandR::speciesInStudyArea(sim$studyArea)
+    sp <- LandR::speciesInStudyArea(studyArea = sim$studyArea)
     sp <- LandR::equivalentName(sp$speciesList, df = sppEquivalencies_CA, column = Par$sppEquivCol)
     sim$sppEquiv <- sppEquivalencies_CA[get(Par$sppEquivCol) %in% sp]
   }
