@@ -943,7 +943,7 @@ runBorealDP_forCohortData <- function(sim) {
     Require::Install("PredictiveEcology/SpaDES.project@transition")
     modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
     SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@terra-migration")),
-                              modulePath = modulePathLocal, overwrite = TRUE)
+                              modulePath = modulePathLocal, overwrite = FALSE)
     pathsLocal$modulePath <- modulePathLocal
 
   }
@@ -969,11 +969,12 @@ runBorealDP_forCohortData <- function(sim) {
                   "rasterToMatchLarge", "rasterToMatch", 
                   "studyAreaLarge", "studyArea", 
                   "species", "speciesTable", "sppEquiv")
+  objsNeeded <- intersect(ls(sim), objsNeeded)
   objsNeeded <- mget(objsNeeded, envir = envir(sim))
 
   cds <- lapply(neededYears, function(ny, objs = objsNeeded) {
     parms <- list()
-    #if needdModule is vectorized - we will have to rethink
+    #if needModule is vectorized - we will have to rethink
     parms[[neededModule]] <- P(sim, module = neededModule)
     parms[[neededModule]][["dataYear"]] <- ny
     parms[[neededModule]][["exportModels"]] <- "none"
@@ -986,9 +987,9 @@ runBorealDP_forCohortData <- function(sim) {
     cohDatObj <- paste0(cohDat, ny)
     pixGrpMap <- paste0(pixGM, ny)
     saObj <- paste0(saMap, ny)
-    out[[cohDatObj]] <- sim[[cohDat]]
-    out[[pixGrpMap]] <- sim[[pixGM]]
-    out[[saObj]] <- sim[[saMap]]
+    out[[cohDatObj]] <- out[[cohDat]]
+    out[[pixGrpMap]] <- out[[pixGM]]
+    out[[saObj]] <- out[[saMap]]
     mget(c(cohDatObj, pixGrpMap, saObj), envir = envir(out))
   })
   lapply(cds, function(cd) list2env(cd, envir = envir(sim)))
