@@ -775,6 +775,8 @@ plotAndMessage <- function(sim) {
     sim$sppEquiv <- sppEquivalencies_CA[get(Par$sppEquivCol) %in% sp]
   }
 
+  SpaDES.core::paramCheckOtherMods(sim, paramToCheck = "sppEquivCol")
+
   if (is.null(P(sim)$.studyAreaName)) {
     P(sim)$.studyAreaName <- studyAreaName(sim$studyArea)
   }
@@ -783,10 +785,10 @@ plotAndMessage <- function(sim) {
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
   if (!suppliedElsewhere("rasterToMatch", sim)) {
-    sim$rasterToMatch <- LandR::prepInputsLCC(year = 2005, ## TODO: use 2010
+    sim$rasterToMatch <- Cache(LandR::prepInputsLCC(year = 2005, ## TODO: use 2010
                                               destinationPath = dPath,
                                               studyArea = sim$studyArea,
-                                              useCache = TRUE)
+                                              useCache = TRUE))
   }
 
   if (!all(suppliedElsewhere("cohortData2011", sim),
@@ -895,13 +897,16 @@ plotAndMessage <- function(sim) {
   }
 
   if (!suppliedElsewhere("rstLCC", sim)) {
+    # This is now at 30m resolution -- so it may/likely will need a projectTo to rasterToMatch
     year <- 2010
-    sim$rstLCC <- prepInputsLCC(
+    sim$rstLCC <- Cache(prepInputsLCC(
       year = year,
       destinationPath = dPath,
-      studyArea = sim$studyArea,
+      # studyArea = sim$studyArea,
+      to = sim$rasterToMatch
       filename2 = file.path(dPath, paste0("rstLCC_", year, "_", P(sim)$.studyAreaName, ".tif")),
-      useCache = TRUE)
+      #useCache = TRUE
+      ))
   }
 
   if (!suppliedElsewhere("historicalClimateRasters", sim)) {
@@ -990,10 +995,12 @@ runBorealDP_forCohortData <- function(sim) {
     parms[[neededModule]][["dataYear"]] <- ny
     parms[[neededModule]][["exportModels"]] <- "none"
 
-    out <- do.call(simInitAndSpades, append(list(paths = pathsLocal,
+    out <- Cache(do.call(SpaDES.core::simInitAndSpades, list(paths = pathsLocal,
                                                  params = parms,
-                                                 modules = neededModule),
-                                            objs))
+                                                 # times = list(start = 2023),
+                                                 modules = neededModule,
+                                                 objects = objs)),
+                         .functionName = "simInitAndSpades")
 
     cohDatObj <- paste0(cohDat, ny)
     pixGrpMap <- paste0(pixGM, ny)
