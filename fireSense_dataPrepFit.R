@@ -12,7 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
-  # loadOrder = list(after = c("Biomass_borealDataPrep")),
+  loadOrder = list(after = c("Biomass_borealDataPrep", "Biomass_speciesParameters")),
   reqdPkgs = list("data.table", "fastDummies",
                   "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9050)",
                   "ggplot2", "parallel", "purrr", "raster", "sf", "sp",
