@@ -953,12 +953,13 @@ rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
 
 
 runBorealDP_forCohortData <- function(sim) {
-  neededModule <- "Biomass_borealDataPrep"
+  neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
+  # neededModule <- "Biomass_borealDataPrep"
   pathsLocal <- paths(sim)
-  if (!neededModule %in% modules(sim)) {
+  if (any(!neededModule %in% modules(sim))) {
     Require::Install("PredictiveEcology/SpaDES.project@transition")
     modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
-    SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@terra-migration")),
+    SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@development")),
                               modulePath = modulePathLocal, overwrite = FALSE)
     pathsLocal$modulePath <- modulePathLocal
 
@@ -968,13 +969,16 @@ runBorealDP_forCohortData <- function(sim) {
   saMap <- "standAgeMap"
   neededYears <- c(2001, 2011)
   if (!is.null(sim$cohortData)) {
-    alreadyDone <- P(sim, "dataYear", neededModule)
+    alreadyDone <- P(sim, "dataYear", "Biomass_borealDataPrep")
     cohDatObj <- paste0(cohDat, alreadyDone)
     pixGrpMap <- paste0(pixGM, alreadyDone)
     saObj <- paste0(saMap, alreadyDone)
     sim[[cohDatObj]] <- sim[[cohDat]]
     sim[[pixGrpMap]] <- sim[[pixGM]]
     sim[[saObj]] <- sim[[saMap]]
+
+    messageColoured(colour = "yellow", "fireSense_dataPrepFit will use estimates of ",
+                    paste0("cohortData", alreadyDone, collapse = ", "), " from modules already run")
 
     neededYears <- setdiff(neededYears, alreadyDone)
   }
@@ -989,19 +993,23 @@ runBorealDP_forCohortData <- function(sim) {
   objsNeeded <- mget(objsNeeded, envir = envir(sim))
 
   cds <- lapply(neededYears, function(ny, objs = objsNeeded) {
+    messageColoured(colour = "yellow", "Running Biomass_borealDataPrep for year ", ny)
+    messageColoured(colour = "yellow", "  inside fireSense_dataPrepFit to estimate cohortData", ny)
+
     parms <- list()
     #if needModule is vectorized - we will have to rethink
-    parms[[neededModule]] <- P(sim, module = neededModule)
-    parms[[neededModule]][["dataYear"]] <- ny
-    parms[[neededModule]][["exportModels"]] <- "none"
+    for (nm in neededModule) {
+      parms[[nm]] <- P(sim, module = nm)
+      parms[[nm]][["dataYear"]] <- ny
+      parms[[nm]][["exportModels"]] <- "none"
+    }
 
     out <- Cache(do.call(SpaDES.core::simInitAndSpades, list(paths = pathsLocal,
                                                  params = parms,
-                                                 # times = list(start = 2023),
+                                                 times = list(start = ny, end = ny),
                                                  modules = neededModule,
                                                  objects = objs)),
                          .functionName = "simInitAndSpades")
-
     cohDatObj <- paste0(cohDat, ny)
     pixGrpMap <- paste0(pixGM, ny)
     saObj <- paste0(saMap, ny)
