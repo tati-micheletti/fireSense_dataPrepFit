@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   # loadOrder = list(after = c("Biomass_borealDataPrep")),
   reqdPkgs = list("data.table", "fastDummies",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9052)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9054)",
                   "ggplot2", "parallel", "purrr", "raster", "sf", "sp",
                   "PredictiveEcology/LandR@development (>= 1.1.0.9073)",
                   "PredictiveEcology/SpaDES.core@development (>= 2.0.2.9006)",
@@ -485,13 +485,15 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 
 prepare_SpreadFitFire_Vector <- function(sim) {
 
-  # #sanity check
-  #TODO: come up with terra solution
-  # stopifnot(
-  #   "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-  #     length(sf::st_contains(sim$studyArea, x)) == 1
-  #   })))
-  # )
+  #sanity check
+  #TODO: is there a terra version of st_contains? 
+  stopifnot(
+    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+      SA <-st_as_sf(sim$studyArea)
+      x <- st_as_sf(x)
+      length(sf::st_contains(SA, x)) == 1
+    })))
+  )
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
@@ -523,8 +525,8 @@ prepare_SpreadFitFire_Vector <- function(sim) {
 
   ## drop fires less than 1 px in size
   pixSizeHa <- prod(res(sim$flammableRTM)) / 1e4
-  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, function(x) {
-    x <- subset(x, SIZE_HA > pixSizeHa)
+  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, function(x, minSize = pixSizeHa) {
+    x <- subset(x, SIZE_HA > minSize)
     if (nrow(x) > 0) x else NULL
   })
   sim$spreadFirePoints[sapply(sim$spreadFirePoints, is.null)] <- NULL
