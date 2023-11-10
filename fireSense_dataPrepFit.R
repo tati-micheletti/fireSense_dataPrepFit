@@ -14,7 +14,7 @@ defineModule(sim, list(
   documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
   loadOrder = list(after = c("Biomass_borealDataPrep", "Biomass_speciesParameters")),
   reqdPkgs = list("data.table", "fastDummies",
-                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9050)",
+                  "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9055)",
                   "ggplot2", "parallel", "purrr", "raster", "sf", "sp",
                   "PredictiveEcology/LandR@development (>= 1.1.0.9073)",
                   "PredictiveEcology/SpaDES.core@development (>= 2.0.2.9006)",
@@ -219,6 +219,17 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
+  
+  #sanity checks
+  if (!LandR::.compareRas(sim$standAgeMap2001, sim$standAgeMap2011, sim$rasterToMatch,
+                          stopOnError = FALSE)){
+    sim$standAgeMap2001 <- postProcess(sim$standAgeMap2001, cropTo = sim$rasterToMatch, 
+                                       projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
+    sim$standAgeMap2011 <- postProcess(sim$standAgeMap2011, cropTo = sim$rasterToMatch, 
+                                        projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
+  }
+  
+  
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
   spreadFuels <- sim$sppEquiv[[P(sim)$spreadFuelClassCol]]
 
@@ -272,12 +283,11 @@ Init <- function(sim) {
 prepare_SpreadFit <- function(sim) {
   ## Put in format for DEOptim that distinguishes annual and nonannual covariates
   ## Prepare annual spread fit covariates
-
   ####prep veg data####
   doAssertion <- getOption("fireSenseUtils.assertions", TRUE)
 
   ## sanity check the inputs
-  compareGeom(sim$rasterToMatch, sim$flammableRTM, sim$rstLCC)
+  compareGeom(sim$rasterToMatch, sim$flammableRTM)
   compareGeom(sim$rasterToMatch, sim$standAgeMap2001, sim$standAgeMap2011)
   lapply(sim$historicalClimateRasters, compareGeom, x = sim$rasterToMatch)
 
@@ -475,13 +485,15 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 
 prepare_SpreadFitFire_Vector <- function(sim) {
 
-  # #sanity check
-  #TODO: come up with terra solution
-  # stopifnot(
-  #   "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-  #     length(sf::st_contains(sim$studyArea, x)) == 1
-  #   })))
-  # )
+  #sanity check
+  #TODO: is there a terra version of st_contains? 
+  stopifnot(
+    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
+      SA <-st_as_sf(sim$studyArea)
+      x <- st_as_sf(x)
+      length(sf::st_contains(SA, x)) == 1
+    })))
+  )
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
@@ -513,8 +525,8 @@ prepare_SpreadFitFire_Vector <- function(sim) {
 
   ## drop fires less than 1 px in size
   pixSizeHa <- prod(res(sim$flammableRTM)) / 1e4
-  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, function(x) {
-    x <- subset(x, SIZE_HA > pixSizeHa)
+  sim$spreadFirePoints <- lapply(sim$spreadFirePoints, function(x, minSize = pixSizeHa) {
+    x <- subset(x, SIZE_HA > minSize)
     if (nrow(x) > 0) x else NULL
   })
   sim$spreadFirePoints[sapply(sim$spreadFirePoints, is.null)] <- NULL
