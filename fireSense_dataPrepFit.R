@@ -219,17 +219,17 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  
+
   #sanity checks
   if (!LandR::.compareRas(sim$standAgeMap2001, sim$standAgeMap2011, sim$rasterToMatch,
                           stopOnError = FALSE)){
-    sim$standAgeMap2001 <- postProcess(sim$standAgeMap2001, cropTo = sim$rasterToMatch, 
+    sim$standAgeMap2001 <- postProcess(sim$standAgeMap2001, cropTo = sim$rasterToMatch,
                                        projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
-    sim$standAgeMap2011 <- postProcess(sim$standAgeMap2011, cropTo = sim$rasterToMatch, 
+    sim$standAgeMap2011 <- postProcess(sim$standAgeMap2011, cropTo = sim$rasterToMatch,
                                         projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
   }
-  
-  
+
+
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
   spreadFuels <- sim$sppEquiv[[P(sim)$spreadFuelClassCol]]
 
@@ -486,14 +486,16 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 prepare_SpreadFitFire_Vector <- function(sim) {
 
   #sanity check
-  #TODO: is there a terra version of st_contains? 
-  stopifnot(
-    "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      SA <-st_as_sf(sim$studyArea)
-      x <- st_as_sf(x)
-      length(sf::st_contains(SA, x)) == 1
-    })))
-  )
+  #TODO: is there a terra version of st_contains?
+  invisible(lapply(sim$firePolys, function(x) {
+    pass <- identical(nrow(st_as_sf(x)),
+                      nrow(st_intersection(st_as_sf(x), st_as_sf(
+                        aggregate(sim$studyArea)
+                      ))))
+    Year <- unique(st_as_sf(x)[["YEAR"]])
+    if (!pass)
+      stop(paste0("Points for year ", Year, " are not located within the study area."))
+  }))
 
   ####prep fire data ####
   if (is.null(sim$firePolys[[1]]$FIRE_ID)) {
@@ -595,7 +597,7 @@ prepare_IgnitionFit <- function(sim) {
   stopifnot(
     "all ignitionFirePoints are not within studyArea" = identical(
       nrow(st_as_sf(sim$ignitionFirePoints)),
-      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
+      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(aggregate(sim$studyArea))))
     ))
 
   # account for forested pixels that aren't in cohortData
