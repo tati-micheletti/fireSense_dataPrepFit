@@ -218,14 +218,22 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
+  ## ensure studyArea consists of a single polygon
+  mod$studyAreaUnion <- if (is(sim$studyArea, "sf")) {
+    sf::st_union(sim$studyArea)
+  } else if (is(sim$studyArea, "SpatVector")) {
+    terra::aggregate(sim$studyArea)
+  } else {
+    stop("studyArea must be either an sf or SpatVector object")
+  }
 
   ## sanity checks
   if (!LandR::.compareRas(sim$standAgeMap2001, sim$standAgeMap2011, sim$rasterToMatch,
                           stopOnError = FALSE)) {
     sim$standAgeMap2001 <- postProcess(sim$standAgeMap2001, cropTo = sim$rasterToMatch,
-                                       projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
+                                       projectTo = sim$rasterToMathc, maskTo = mod$studyAreaUnion)
     sim$standAgeMap2011 <- postProcess(sim$standAgeMap2011, cropTo = sim$rasterToMatch,
-                                        projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
+                                        projectTo = sim$rasterToMathc, maskTo = mod$studyAreaUnion)
   }
 
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
@@ -485,7 +493,7 @@ prepare_SpreadFitFire_Vector <- function(sim) {
   ## TODO: is there a terra version of st_contains?
   stopifnot(
     "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      SA <- st_as_sf(sim$studyArea)
+      SA <- st_as_sf(mod$studyAreaUnion)
       x <- st_as_sf(x)
       length(sf::st_contains(SA, x)) == 1
     })))
@@ -591,7 +599,7 @@ prepare_IgnitionFit <- function(sim) {
   stopifnot(
     "all ignitionFirePoints are not within studyArea" = identical(
       nrow(st_as_sf(sim$ignitionFirePoints)),
-      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(sim$studyArea)))
+      nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(mod$studyAreaUnion)))
     ))
 
   # account for forested pixels that aren't in cohortData
@@ -925,7 +933,7 @@ plotAndMessage <- function(sim) {
     sim$flammableRTM <- defineFlammable(sim$rstLCC,
                                         nonFlammClasses = P(sim)$nonflammableLCC,
                                         to = sim$rasterToMatch,
-                                        filename2 = file.path(dPath,paste0("flammableRTM_",
+                                        filename2 = file.path(dPath, paste0("flammableRTM_",
                                                                            P(sim)$.studyAreaName,
                                                                            ".tif")))
   }
