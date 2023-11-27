@@ -51,9 +51,9 @@ defineModule(sim, list(
     defineParameter("nonflammableLCC", "numeric", c(13, 16, 17, 18, 19), NA, NA,
                     "non-flammable LCC in `sim$rstLCC`."),
     defineParameter("nonForestCanBeYoungAge", "logical", TRUE, NA, NA,
-                    "if TRUE, burned non-forest will be treated as youngAge"),
+                    "if TRUE, burned non-forest will be treated as `youngAge`"),
     defineParameter("sppEquivCol", "character", "LandR", NA, NA,
-                    "column name in sppEquiv object that defines unique species in cohortData"),
+                    "column name in `sppEquiv` object that defines unique species in `cohortData`"),
     defineParameter("spreadFuelClassCol", "character", "FuelClass", NA, NA,
                     "if using fuel classes for spread, the column in `sppEquiv` that defines unique fuel classes"),
     defineParameter("useCentroids", "logical", TRUE, NA, NA,
@@ -77,7 +77,7 @@ defineModule(sim, list(
     defineParameter(".saveInterval", "numeric", NA, NA, NA,
                     "This describes the simulation time interval between save events."),
     defineParameter(".studyAreaName", "character", NULL, NA, NA,
-                    "studyArea name that will be appended to file-backed rasters"),
+                    "`studyArea` name that will be appended to file-backed rasters"),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
                     paste("Should this entire module be run with caching activated? This is intended",
                           "for data-type modules, where stochasticity and time are not relevant"))
@@ -94,7 +94,7 @@ defineModule(sim, list(
                  paste0("List of sf polygon objects representing annual fire polygons.",
                         "List must be named with followign convention: 'year<numeric year>'")),
     expectsInput("firePolysForAge", "list", sourceURL = NA,
-                 "list of fire polygons used to classify timeSinceDisturbance in nonforest LCC"),
+                 "list of fire polygons used to classify `timeSinceDisturbance` in nonforest LCC"),
     expectsInput("historicalFireRaster", "SpatRaster",
                  sourceURL = "https://opendata.nfis.org/downloads/forest_change/CA_Forest_Fire_1985-2020.zip",
                  "a raster with values representing fire year 1985-2020"),
@@ -109,11 +109,11 @@ defineModule(sim, list(
     expectsInput("nonForestedLCCGroups", "list",
                  paste("a named list of non-forested landcover groups",
                        "e.g. list('wetland' = c(19, 23, 32))",
-                       "These will become covariates in fireSense_IgnitionFit")),
+                       "These will become covariates in `fireSense_IgnitionFit`")),
     expectsInput("pixelGroupMap2001", "SpatRaster", sourceURL = NA,
-                 "SpatRaster that defines the pixelGroups for cohortData table in 2001"),
+                 "SpatRaster that defines the `pixelGroups` for cohortData table in 2001"),
     expectsInput("pixelGroupMap2011", "SpatRaster",
-                 "SpatRaster that defines the pixelGroups for cohortData table in 2011"),
+                 "SpatRaster that defines the `pixelGroups` for cohortData table in 2011"),
     expectsInput("rasterToMatch", "SpatRaster", sourceURL = NA,
                  "template raster for study area. Assumes some buffering of core area to limit edge effect of fire."),
     expectsInput("rstLCC", "SpatRaster", sourceURL = NA,
@@ -121,19 +121,19 @@ defineModule(sim, list(
     expectsInput("sppEquiv", "data.table", sourceURL = NA,
                  "table of LandR species equivalencies"),
     expectsInput("standAgeMap2001", "SpatRaster", sourceURL = NA,
-                 "map of stand age in 2001 used to create cohortData2001"),
+                 "map of stand age in 2001 used to create `cohortData2001`"),
     expectsInput("standAgeMap2011", "SpatRaster", sourceURL = NA,
-                 "map of stand age in 2011 used to create cohortData2011"),
+                 "map of stand age in 2011 used to create `cohortData2011`"),
     expectsInput("studyArea", "sf", sourceURL = NA,
                  "studyArea that determines spatial boundaries of all data")
   ),
   outputObjects = bindrows(
     createsOutput("fireBufferedListDT", "list",
-                  "list of data.tables with fire id, pixelID, and buffer status"),
+                  "list of data.tables with fire id, `pixelID`, and buffer status"),
     createsOutput("firePolys", "list",
                   "list of sf polygon objects representing annual fires"),
     createsOutput("fireSense_annualSpreadFitCovariates", "list",
-                  "list of tables with climate covariates, youngAge, burn status, polyID, and pixelID"),
+                  "list of tables with climate covariates, `youngAge`, burn status, `polyID`, and `pixelID`"),
     createsOutput("fireSense_escapeCovariates", "data.table",
                   "ignition covariates with added column of escapes"),
     createsOutput("fireSense_escapeFormula", "character",
@@ -143,7 +143,7 @@ defineModule(sim, list(
     createsOutput("fireSense_ignitionFormula", "character",
                   "formula for ignition, using climate and vegetation covariates, as character"),
     createsOutput("fireSense_nonAnnualSpreadFitCovariates", "list",
-                  "list of two tables with veg covariates, burn status, polyID, and pixelID"),
+                  "list of two tables with vegetation covariates, burn status, polyID, and `pixelID`"),
     createsOutput("fireSense_spreadFormula", "character",
                   "formula for spread, using climate and vegetation covariates, as character"),
     createsOutput("ignitionFitRTM", "SpatRaster",
@@ -189,7 +189,6 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
       # do stuff for this event
       sim <- Init(sim)
 
-
       sim <- scheduleEvent(sim, end(sim), "fireSense_dataPrepFit", "plotAndMessage", eventPriority = 9)
       sim <- scheduleEvent(sim, start(sim), "fireSense_dataPrepFit", "cleanUp", eventPriority = 10) #cleans up Mod objects
     },
@@ -219,17 +218,16 @@ doEvent.fireSense_dataPrepFit = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  
-  #sanity checks
+
+  ## sanity checks
   if (!LandR::.compareRas(sim$standAgeMap2001, sim$standAgeMap2011, sim$rasterToMatch,
-                          stopOnError = FALSE)){
-    sim$standAgeMap2001 <- postProcess(sim$standAgeMap2001, cropTo = sim$rasterToMatch, 
+                          stopOnError = FALSE)) {
+    sim$standAgeMap2001 <- postProcess(sim$standAgeMap2001, cropTo = sim$rasterToMatch,
                                        projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
-    sim$standAgeMap2011 <- postProcess(sim$standAgeMap2011, cropTo = sim$rasterToMatch, 
+    sim$standAgeMap2011 <- postProcess(sim$standAgeMap2011, cropTo = sim$rasterToMatch,
                                         projectTo = sim$rasterToMathc, maskTo = sim$studyArea)
   }
-  
-  
+
   igFuels <- sim$sppEquiv[[P(sim)$ignitionFuelClassCol]]
   spreadFuels <- sim$sppEquiv[[P(sim)$spreadFuelClassCol]]
 
@@ -245,9 +243,8 @@ Init <- function(sim) {
 
   # cannot merge because before subsetting due to column differences over time
 
-  #TODO: spreadFit should not use this object if P(sim)$nonForestCanBeYoungAge is TRUE
-  if (P(sim)$nonForestCanBeYoungAge){
-
+  ## TODO: spreadFit should not use this object if P(sim)$nonForestCanBeYoungAge is TRUE
+  if (P(sim)$nonForestCanBeYoungAge) {
     #if fireRaster is null, it will use firePolys
     sim$nonForest_timeSinceDisturbance2001 <- makeTSD(year = 2001,
                                                       fireRaster = sim$historicalFireRaster,
@@ -325,7 +322,7 @@ prepare_SpreadFit <- function(sim) {
   vegData[, missingLC := NULL]
 
   #prep the fire data
-  if (P(sim)$useRasterizedFire){
+  if (P(sim)$useRasterizedFire) {
     sim <- prepare_SpreadFitFire_Raster(sim)
   } else {
     sim <- prepare_SpreadFitFire_Vector(sim)
@@ -458,7 +455,7 @@ prepare_SpreadFitFire_Raster <- function(sim) {
   #TODO: test that this is the correct method for missing years
   missingYears <- unlist(lapply(sim$fireBufferedListDT, is.null))
 
-  if (any(missingYears)){
+  if (any(missingYears)) {
     actualFireYears <- P(sim)$fireYears[!missingYears]
     sim$fireBufferedListDT <- sim$fireBufferedListDT[!missingYears]
   }
@@ -484,12 +481,11 @@ prepare_SpreadFitFire_Raster <- function(sim) {
 }
 
 prepare_SpreadFitFire_Vector <- function(sim) {
-
-  #sanity check
-  #TODO: is there a terra version of st_contains? 
+  ## sanity check
+  ## TODO: is there a terra version of st_contains?
   stopifnot(
     "all annual firePolys are not within studyArea" = all(unlist(lapply(sim$firePolys, function(x) {
-      SA <-st_as_sf(sim$studyArea)
+      SA <- st_as_sf(sim$studyArea)
       x <- st_as_sf(x)
       length(sf::st_contains(SA, x)) == 1
     })))
@@ -750,7 +746,7 @@ prepare_EscapeFit <- function(sim) {
   RHS <- paste0(escapeVars, collapse = " + ")
   sim$fireSense_escapeFormula <- paste0(LHS, RHS, " - 1")
 
-  if (any(sim$fireSense_escapeCovariates$escapes > sim$fireSense_escapeCovariates$ignitions)){
+  if (any(sim$fireSense_escapeCovariates$escapes > sim$fireSense_escapeCovariates$ignitions)) {
     stop("issue with escapes outnumbering ignitions in a pixel - contact module creators")
   }
 
@@ -946,7 +942,7 @@ plotAndMessage <- function(sim) {
                                                                            ".tif")))
   }
 
-  if (P(sim)$useRasterizedFire){
+  if (P(sim)$useRasterizedFire) {
     if (!suppliedElsewhere("historicalFireRaster", sim)) {
       sim$historicalFireRaster <- Cache(prepInputs,
                                         url = extractURL("historicalFireRaster", sim),
@@ -956,7 +952,7 @@ plotAndMessage <- function(sim) {
                                         method = "near",
                                         filename2 = paste0("wildfire_", P(sim)$.studyAreaName, ".tif"),
                                         userTags = c("historicalFireRaster", P(sim)$.studyAreaName))
-      #make sure this is near or ngb
+      ## make sure this is near or ngb
     }
   }
   if (!suppliedElsewhere("nonForestedLCCGroups", sim)) {
@@ -974,7 +970,6 @@ rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
   fbldt <- fbldt[pixelID %in% unique(pixelIDsAllowed)]
   fireBufferedListDT <- split(fbldt, by = "year", keep.by = FALSE)
 }
-
 
 runBorealDP_forCohortData <- function(sim) {
   neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
