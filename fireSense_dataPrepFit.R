@@ -973,11 +973,10 @@ runBorealDP_forCohortData <- function(sim) {
   pathsLocal <- paths(sim)
   if (any(!neededModule %in% modules(sim))) {
     Require::Install("PredictiveEcology/SpaDES.project@transition")
-    modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
+    modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "submodules")
     SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@development")),
                               modulePath = modulePathLocal, overwrite = FALSE)
     pathsLocal$modulePath <- modulePathLocal
-
   }
   cohDat <- "cohortData"
   pixGM <- "pixelGroupMap"
