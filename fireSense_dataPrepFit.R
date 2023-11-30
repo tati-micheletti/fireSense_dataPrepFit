@@ -33,7 +33,7 @@ defineModule(sim, list(
                           "minimum sample of burned and unburned pixels to include in each fire.")),
     defineParameter("cutoffForYoungAge", "numeric", 15, NA, NA,
                     "Age at and below which pixels are considered 'young' --> young <- age <= cutoffForYoungAge"),
-    defineParameter("fireYears", "integer", 2001:2020, NA, NA,
+    defineParameter("fireYears", "integer", 2001:2022, NA, NA,
                     paste("A numeric vector indicating which years should be extracted",
                           "from the fire databases to use for fitting")),
     defineParameter("forestedLCC", "numeric", c(1:6), NA, NA,
