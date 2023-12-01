@@ -1011,6 +1011,10 @@ runBorealDP_forCohortData <- function(sim) {
       parms[[nm]][["exportModels"]] <- "none"
     }
 
+    if (".globals" %in% names(params(sim))) {
+      parms[".globals"] <- params(sim)[".globals"]
+    }
+
     out <- Cache(do.call(SpaDES.core::simInitAndSpades, list(paths = pathsLocal,
                                                              params = parms,
                                                              times = list(start = ny, end = ny),
