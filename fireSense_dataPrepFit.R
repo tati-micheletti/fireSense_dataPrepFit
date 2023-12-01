@@ -960,7 +960,13 @@ rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
 }
 
 runBorealDP_forCohortData <- function(sim) {
-  neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
+
+  #Biomass_species should be only run if it is already in the simList
+  neededModule <- "Biomass_borealDataPrep"
+  if ("Biomass_speciesData" %in% modules(sim)) {
+    neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
+  }
+
   # neededModule <- "Biomass_borealDataPrep"
   pathsLocal <- paths(sim)
   if (any(!neededModule %in% modules(sim))) {
