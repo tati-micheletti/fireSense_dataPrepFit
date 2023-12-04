@@ -25,6 +25,7 @@ Provide a summary of user-visible parameters.
 
 ```{r moduleParams, echo = FALSE, eval = TRUE}
 df_params <- SpaDES.core::moduleParams("fireSense_dataPrepFit", "..")
+df_params$default[[1]] <- "fireSenseUtils::multiplier"
 knitr::kable(df_params)
 ```
 
