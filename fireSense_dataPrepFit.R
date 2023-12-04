@@ -11,7 +11,7 @@ defineModule(sim, list(
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
-  documentation = deparse(list("README.txt", "fireSense_dataPrepFit.Rmd")),
+  documentation = deparse(list("README.md", "fireSense_dataPrepFit.Rmd")),
   loadOrder = list(after = c("Biomass_borealDataPrep", "Biomass_speciesParameters")),
   reqdPkgs = list("data.table", "fastDummies",
                   "PredictiveEcology/fireSenseUtils@development (>= 0.0.5.9055)",
@@ -33,7 +33,7 @@ defineModule(sim, list(
                           "minimum sample of burned and unburned pixels to include in each fire.")),
     defineParameter("cutoffForYoungAge", "numeric", 15, NA, NA,
                     "Age at and below which pixels are considered 'young' --> young <- age <= cutoffForYoungAge"),
-    defineParameter("fireYears", "integer", 2001:2020, NA, NA,
+    defineParameter("fireYears", "integer", 2001:2022, NA, NA,
                     paste("A numeric vector indicating which years should be extracted",
                           "from the fire databases to use for fitting")),
     defineParameter("forestedLCC", "numeric", c(1:6), NA, NA,
@@ -595,12 +595,12 @@ prepare_SpreadFitFire_Vector <- function(sim) {
 }
 
 prepare_IgnitionFit <- function(sim) {
-
   stopifnot(
     "all ignitionFirePoints are not within studyArea" = identical(
       nrow(st_as_sf(sim$ignitionFirePoints)),
       nrow(st_intersection(st_as_sf(sim$ignitionFirePoints), st_as_sf(mod$studyAreaUnion)))
-    ))
+    )
+  )
 
   # account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
@@ -980,16 +980,22 @@ rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
 }
 
 runBorealDP_forCohortData <- function(sim) {
-  neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
+
+  #Biomass_species should be only run if it is already in the simList
+  neededModule <- "Biomass_borealDataPrep"
+  if ("Biomass_speciesData" %in% modules(sim)) {
+    neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
+  }
+
   # neededModule <- "Biomass_borealDataPrep"
   pathsLocal <- paths(sim)
   if (any(!neededModule %in% modules(sim))) {
-    Require::Install("PredictiveEcology/SpaDES.project@transition")
-    modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "data", "modules")
-    SpaDES.project::getModule(file.path("PredictiveEcology", paste0(neededModule, "@development")),
-                              modulePath = modulePathLocal, overwrite = FALSE)
+    ## don't install pkgs mid-stream; already use module metadata to declare pkgs for installation
+    # Require::Install("PredictiveEcology/SpaDES.project@transition")
+    modulePathLocal <- file.path(modulePath(sim), currentModule(sim), "submodules")
+    getModule(file.path("PredictiveEcology", paste0(neededModule, "@development")),
+              modulePath = modulePathLocal, overwrite = FALSE)
     pathsLocal$modulePath <- modulePathLocal
-
   }
   cohDat <- "cohortData"
   pixGM <- "pixelGroupMap"
@@ -1031,12 +1037,16 @@ runBorealDP_forCohortData <- function(sim) {
       parms[[nm]][["exportModels"]] <- "none"
     }
 
+    if (".globals" %in% names(params(sim))) {
+      parms[".globals"] <- params(sim)[".globals"]
+    }
+
     out <- Cache(do.call(SpaDES.core::simInitAndSpades, list(paths = pathsLocal,
-                                                 params = parms,
-                                                 times = list(start = ny, end = ny),
-                                                 modules = neededModule,
-                                                 objects = objs)),
-                         .functionName = "simInitAndSpades")
+                                                             params = parms,
+                                                             times = list(start = ny, end = ny),
+                                                             modules = neededModule,
+                                                             objects = objs)),
+                 .functionName = "simInitAndSpades")
     cohDatObj <- paste0(cohDat, ny)
     pixGrpMap <- paste0(pixGM, ny)
     saObj <- paste0(saMap, ny)
