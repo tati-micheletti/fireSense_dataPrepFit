@@ -406,9 +406,9 @@ display: none;
 <td align="left">NA</td>
 <td align="left">The distance that determine whether separate patches of
 burned pixels originated from the same fire. Only relevant when
-‘useRasterizedFireForSpread’ is TRUE. This param is separate from
-‘minBufferSize’, which is used to determine the minimum sample of burned
-and unburned pixels to include in each fire.</td>
+<code>useRasterizedFireForSpread = TRUE</code>. This param is separate
+from <code>minBufferSize</code>, which is used to determine the minimum
+sample of burned and unburned pixels to include in each fire.</td>
 </tr>
 <tr class="odd">
 <td align="left">cutoffForYoungAge</td>
@@ -516,8 +516,8 @@ defines unique species in <code>cohortData</code></td>
 <td align="left">NA</td>
 <td align="left">NA</td>
 <td align="left">Should fire ignitions start at the
-<code>sim$firePolygons</code> centroids (TRUE) or at the ignition points
-in <code>sim$firePoints</code>?</td>
+<code>sim$firePolygons</code> centroids or at the ignition points in
+<code>sim$firePoints</code>?</td>
 </tr>
 <tr class="odd">
 <td align="left">useRasterizedFireForSpread</td>
@@ -529,7 +529,7 @@ in <code>sim$firePoints</code>?</td>
 fire dataset? This method attributes burned pixels to specific fires,
 only examines the latest fire in a pixel, and may be subject to temporal
 error. is therefore more appropriate in areas with low rates of fire, or
-where the NFDB dataset may be incomplete (ie northern Ontario).</td>
+where the NFDB dataset may be incomplete (e.g., northern Ontario).</td>
 </tr>
 <tr class="even">
 <td align="left">whichModulesToPrepare</td>
@@ -660,7 +660,7 @@ each point denoting an ignition location.</td>
 <td align="left">list</td>
 <td align="left">List of sf polygon objects representing annual fire
 polygons.List must be named with followign convention:
-‘year<numeric year>’</td>
+<code>year&lt;numeric year&gt;</code></td>
 <td align="left">NA</td>
 </tr>
 <tr class="odd">
@@ -689,7 +689,7 @@ and 1.</td>
 <td align="left">list</td>
 <td align="left">length-one list of containing a raster stack of
 historical climate list named after the variable and raster layers named
-as ‘year<numeric year>’</td>
+as <code>year&lt;numeric year&gt;</code></td>
 <td align="left">NA</td>
 </tr>
 <tr class="odd">
@@ -710,15 +710,15 @@ e.g. list(‘wetland’ = c(19, 23, 32)) These will become covariates in
 <tr class="odd">
 <td align="left">pixelGroupMap2001</td>
 <td align="left">SpatRaster</td>
-<td align="left">SpatRaster that defines the <code>pixelGroups</code>
-for cohortData table in 2001</td>
+<td align="left">defines the <code>pixelGroups</code> for cohortData
+table in 2001</td>
 <td align="left">NA</td>
 </tr>
 <tr class="even">
 <td align="left">pixelGroupMap2011</td>
 <td align="left">SpatRaster</td>
-<td align="left">SpatRaster that defines the <code>pixelGroups</code>
-for cohortData table in 2011</td>
+<td align="left">defines the <code>pixelGroups</code> for cohortData
+table in 2011</td>
 <td align="left">NA</td>
 </tr>
 <tr class="odd">
