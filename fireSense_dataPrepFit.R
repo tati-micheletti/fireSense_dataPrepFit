@@ -884,27 +884,6 @@ plotAndMessage <- function(sim) {
 
       sim$spreadFirePoints <- lapply(sim$firePolys, centerFun)
 
-      # message("... starting up parallel R threads")
-      # dig <- CacheDigest(sim$firePolys)$outputHash
-      # clObj2 <- NULL # make placeholder for inner obj to be sent out to this
-      # sim$spreadFirePoints <- {
-      #   pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys)) |>
-      #     parallel::makeCluster(type = "SOCK", spec = _) |>
-      #     (function(clObj) {
-      #       clObj2 <<- clObj
-      #       parallel::clusterEvalQ(cl = clObj, {library(sf)})
-      #       # clusterExport(cl = clObj, list("firePolys"), envir = sim)
-      #       parallel::clusterApplyLB(
-      #         x = sim$firePolys,
-      #         cl = clObj,
-      #         fun = centerFun)
-      #     })()
-      #   # browser()
-      #   } |>
-      #   Cache(.cacheExtra = dig, # debugCache = "quick", #don't specify FUN argument or Cache will mistake it.
-      #         userTags = c(cacheTags, "spreadFirePoints"),
-      #         omitArgs = c("x", "cl", "clObj", "userTags", "mc.cores", "useCloud", "cloudFolderID"))
-      # stopCluster(clObj2)
       names(sim$spreadFirePoints) <- names(sim$firePolys)
     }
 
