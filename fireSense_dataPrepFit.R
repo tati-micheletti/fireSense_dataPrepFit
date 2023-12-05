@@ -679,6 +679,22 @@ prepare_IgnitionFit <- function(sim) {
   compareGeom(climate, fuelClasses[[1]], fuelClasses[[2]])
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
+  allYears <- c(pre2011, post2011)
+
+  whAvailable <- allYears %in% names(climate)
+  yearsInClimateRast <- allYears[whAvailable]
+  yearsNotAvailable <- allYears[!whAvailable]
+  if (length(yearsNotAvailable)) {
+    warning("P(sim)$fireYears includes more years than are available in ",
+            "sim$historicalClimateRasters; \nmissing: ", paste(yearsNotAvailable, collapse = ", "),
+            "\ntruncating P(sim)$fireYears to: ",
+            paste0(min(yearsInClimateRast), ":", max(yearsInClimateRast)))
+    pre2011 <- intersect(pre2011, yearsInClimateRast)
+    post2011 <- intersect(post2011, yearsInClimateRast)
+    P(sim)$fireYears <- intersect(as.numeric(gsub("year", "", yearsInClimateRast)),
+                                  P(sim)$fireYears)
+
+  }
 
   #this is joining fuel class, LCC, and climate, subsetting to flamIndex, calculating n of ignitions
   fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
