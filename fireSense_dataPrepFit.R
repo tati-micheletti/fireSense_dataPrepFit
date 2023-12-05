@@ -602,6 +602,13 @@ prepare_IgnitionFit <- function(sim) {
     )
   )
 
+  if (!terra::same.crs(sim$ignitionFirePoints, sim$rasterToMatch)) {
+    # project it first, faster than the postProcessTo sequence pre-crop, project, mask, crop
+    sim$ignitionFirePoints <- projectTo(sim$ignitionFirePoints, sim$rasterToMatch) |>
+      cropTo(sim$rasterToMatch) |>
+      maskTo(sim$rasterToMatch)
+  }
+
   # account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
   forestPix <- sim$landcoverDT[rowSums == 0,]$pixelID
@@ -730,6 +737,14 @@ prepare_EscapeFit <- function(sim) {
     #the datasets are essentially the same, with one column difference
     stop("Please include ignitionFit in parameter 'whichModulesToPrepare' if running EscapeFit")
   }
+
+  if (!terra::same.crs(sim$ignitionFirePoints, sim$rasterToMatch)) {
+    # project it first, faster than the postProcessTo sequence pre-crop, project, mask, crop
+    sim$ignitionFirePoints <- projectTo(sim$ignitionFirePoints, sim$rasterToMatch) |>
+      cropTo(sim$rasterToMatch) |>
+      maskTo(sim$rasterToMatch)
+  }
+
   escapeThreshHa <- prod(res(sim$flammableRTM))/10000
   escapes <- sim$ignitionFirePoints[sim$ignitionFirePoints$SIZE_HA > escapeThreshHa,]
 
