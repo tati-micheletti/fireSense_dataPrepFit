@@ -602,6 +602,13 @@ prepare_IgnitionFit <- function(sim) {
     )
   )
 
+  if (!terra::same.crs(sim$ignitionFirePoints, sim$rasterToMatch)) {
+    # project it first, faster than the postProcessTo sequence pre-crop, project, mask, crop
+    sim$ignitionFirePoints <- projectTo(sim$ignitionFirePoints, sim$rasterToMatch) |>
+      cropTo(sim$rasterToMatch) |>
+      maskTo(sim$rasterToMatch)
+  }
+
   # account for forested pixels that aren't in cohortData
   sim$landcoverDT[, rowSums := rowSums(.SD), .SD = setdiff(names(sim$landcoverDT), "pixelID")]
   forestPix <- sim$landcoverDT[rowSums == 0,]$pixelID
@@ -672,6 +679,22 @@ prepare_IgnitionFit <- function(sim) {
   compareGeom(climate, fuelClasses[[1]], fuelClasses[[2]])
   pre2011 <- paste0("year", min(P(sim)$fireYears):2010)
   post2011 <- paste0("year", 2011:max(P(sim)$fireYears))
+  allYears <- c(pre2011, post2011)
+
+  whAvailable <- allYears %in% names(climate)
+  yearsInClimateRast <- allYears[whAvailable]
+  yearsNotAvailable <- allYears[!whAvailable]
+  if (length(yearsNotAvailable)) {
+    warning("P(sim)$fireYears includes more years than are available in ",
+            "sim$historicalClimateRasters; \nmissing: ", paste(yearsNotAvailable, collapse = ", "),
+            "\ntruncating P(sim)$fireYears to: ",
+            paste0(min(yearsInClimateRast), ":", max(yearsInClimateRast)))
+    pre2011 <- intersect(pre2011, yearsInClimateRast)
+    post2011 <- intersect(post2011, yearsInClimateRast)
+    P(sim)$fireYears <- intersect(as.numeric(gsub("year", "", yearsInClimateRast)),
+                                  P(sim)$fireYears)
+
+  }
 
   #this is joining fuel class, LCC, and climate, subsetting to flamIndex, calculating n of ignitions
   fireSense_ignitionCovariates <- Map(f = fireSenseUtils::stackAndExtract,
@@ -730,6 +753,14 @@ prepare_EscapeFit <- function(sim) {
     #the datasets are essentially the same, with one column difference
     stop("Please include ignitionFit in parameter 'whichModulesToPrepare' if running EscapeFit")
   }
+
+  if (!terra::same.crs(sim$ignitionFirePoints, sim$rasterToMatch)) {
+    # project it first, faster than the postProcessTo sequence pre-crop, project, mask, crop
+    sim$ignitionFirePoints <- projectTo(sim$ignitionFirePoints, sim$rasterToMatch) |>
+      cropTo(sim$rasterToMatch) |>
+      maskTo(sim$rasterToMatch)
+  }
+
   escapeThreshHa <- prod(res(sim$flammableRTM))/10000
   escapes <- sim$ignitionFirePoints[sim$ignitionFirePoints$SIZE_HA > escapeThreshHa,]
 
@@ -841,7 +872,7 @@ plotAndMessage <- function(sim) {
     }
 
     if (!suppliedElsewhere("spreadFirePoints", sim)) {
-      message("... preparing polyCentroids; starting up parallel R threads")
+      message("... preparing polyCentroids")
       centerFun <- function(x) {
         if (is.null(x)) {
           return(NULL)
@@ -851,17 +882,8 @@ plotAndMessage <- function(sim) {
         }
       }
 
-      mc <- pemisc::optimalClusterNum(2e3, maxNumClusters = length(sim$firePolys))
-      clObj <- parallel::makeCluster(type = "SOCK", mc)
-      a <- parallel::clusterEvalQ(cl = clObj, {library(sf)})
-      clusterExport(cl = clObj, list("firePolys"), envir = sim)
-      sim$spreadFirePoints <- Cache(FUN = parallel::clusterApply,
-                                    x = sim$firePolys,
-                                    cl = clObj,
-                                    fun = centerFun, #don't specify FUN argument or Cache will mistake it.
-                                    userTags = c(cacheTags, "spreadFirePoints"),
-                                    omitArgs = c("userTags", "mc.cores", "useCloud", "cloudFolderID"))
-      stopCluster(clObj)
+      sim$spreadFirePoints <- lapply(sim$firePolys, centerFun)
+
       names(sim$spreadFirePoints) <- names(sim$firePolys)
     }
 
