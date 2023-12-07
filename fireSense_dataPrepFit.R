@@ -310,7 +310,8 @@ prepare_SpreadFit <- function(sim) {
                                  flammableRTM = sim$flammableRTM,
                                  landcoverDT = sim$landcoverDT,
                                  fuelClassCol = P(sim)$spreadFuelClassCol,
-                                 cutoffForYoungAge = -1)) #youngAge will be resolved annually downstream
+                                 cutoffForYoungAge = -1)) |>
+    Cache(.functionName = "cohortsToFuelClasses") #youngAge will be resolved annually downstream
 
   vegData <- lapply(vegData, FUN = function(x){
     dt <- as.data.table(values(x))
@@ -623,22 +624,24 @@ prepare_IgnitionFit <- function(sim) {
   landcoverDT2011[pixelID %in% problemPix2011, eval(P(sim)$missingLCCgroup) := 1]
   ## first put landcover into raster stack
   ## non-flammable pixels require zero values for non-forest landcover, not NA
-  LCCras <- Cache(Map,
-                  f = putBackIntoRaster,
-                  landcoverDT = list(landcoverDT2001,landcoverDT2011),
-                  MoreArgs = list(lcc = names(sim$nonForestedLCCGroups),
-                                  flammableMap = sim$flammableRTM),
-                  userTags = c("putBackIntoRaster", P(sim)$.studyAreaName))
+  LCCras <- Map(
+      f = putBackIntoRaster,
+      landcoverDT = list(landcoverDT2001,landcoverDT2011),
+      MoreArgs = list(lcc = names(sim$nonForestedLCCGroups),
+                      flammableMap = sim$flammableRTM)) |>
+    Cache(.functionName = "putBackIntoRaster",
+          userTags = c("putBackIntoRaster", P(sim)$.studyAreaName))
 
   fuelClasses <- Map(f = cohortsToFuelClasses,
-                     cohortData = list(sim$cohortData2001, sim$cohortData2011),
-                     yearCohort = list(2001, 2011),
-                     pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
-                     MoreArgs = list(sppEquiv = sim$sppEquiv,
-                                     sppEquivCol = P(sim)$sppEquivCol,
-                                     landcoverDT = sim$landcoverDT,
-                                     flammableRTM = sim$flammableRTM,
-                                     cutoffForYoungAge = P(sim)$cutoffForYoungAge))
+        cohortData = list(sim$cohortData2001, sim$cohortData2011),
+        yearCohort = list(2001, 2011),
+        pixelGroupMap = list(sim$pixelGroupMap2001, sim$pixelGroupMap2011),
+        MoreArgs = list(sppEquiv = sim$sppEquiv,
+                        sppEquivCol = P(sim)$sppEquivCol,
+                        landcoverDT = sim$landcoverDT,
+                        flammableRTM = sim$flammableRTM,
+                        cutoffForYoungAge = P(sim)$cutoffForYoungAge)) |>
+    Cache(.functionName = "cohortsToFuelClasses")
 
   if (P(sim)$nonForestCanBeYoungAge) {
     ## this modifies the NF landcover by converting some NF to a new YA layer
@@ -648,7 +651,8 @@ prepare_IgnitionFit <- function(sim) {
                   NFTSD = list(sim$nonForest_timeSinceDisturbance2001,
                                sim$nonForest_timeSinceDisturbance2011),
                   LCCras = list(LCCras[[1]], LCCras[[2]]),
-                  MoreArgs = list(cutoffForYoungAge = P(sim)$cutoffForYoungAge))
+                  MoreArgs = list(cutoffForYoungAge = P(sim)$cutoffForYoungAge)) |>
+      Cache(.functionName = "calcNonForestYoungAge")
 
     for (i in c(1:2)) {
       if ("youngAge" %in% names(fuelClasses[[i]])) {
@@ -665,14 +669,17 @@ prepare_IgnitionFit <- function(sim) {
     }
   }
 
-  LCCras <- lapply(LCCras, aggregate, fact = P(sim)$igAggFactor, fun = mean)
+  LCCras <- lapply(LCCras, aggregate, fact = P(sim)$igAggFactor, fun = mean) |>
+    Cache(.functionName = "aggregate_LCCras_to_coarse")
   names(LCCras) <- c("year2001", "year2011")
-  fuelClasses <- lapply(fuelClasses, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean)
+  fuelClasses <- lapply(fuelClasses, FUN = aggregate, fact = P(sim)$igAggFactor, fun = mean) |>
+    Cache(.functionName = "aggregate_fuelClasses_to_coarse")
   names(fuelClasses) <- c("year2001", "year2011")
 
   climate <- sim$historicalClimateRasters
   climVar <- names(climate)
-  climate <- aggregate(sim$historicalClimateRasters[[1]], fact = P(sim)$igAggFactor, fun = mean)
+  climate <- aggregate(sim$historicalClimateRasters[[1]], fact = P(sim)$igAggFactor, fun = mean) |>
+    Cache(.functionName = "aggregate_historicalClimateRasters_to_coarse")
 
   ## ignition won't have same years as spread so we do not use names of init objects
   ## The reason is some years may have no significant fires, e.g. 2001 in RIA
@@ -704,7 +711,8 @@ prepare_IgnitionFit <- function(sim) {
                                       MoreArgs = list(climate = climate,
                                                       fires = sim$ignitionFirePoints,
                                                       climVar = climVar #TODO: this is clunky, rethink
-                                      ))
+                                      )) |>
+    Cache(.functionName = "fireSenseUtils::stackAndExtract")
 
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
 
@@ -744,7 +752,6 @@ prepare_IgnitionFit <- function(sim) {
   }
   sim$fireSense_ignitionFormula <- paste0("ignitions ~ ", paste0(interactions, collapse = " + "), " + ",
                                           paste0(pw, collapse  = " + "), "- 1")
-
   return(invisible(sim))
 }
 
@@ -766,7 +773,9 @@ prepare_EscapeFit <- function(sim) {
 
   #make a template aggregated raster - values are irrelevant, only need pixelID
   aggregatedRas <- aggregate(sim$historicalClimateRasters[[1]][[1]],
-                             fact = P(sim)$igAggFactor, fun = mean)
+                             fact = P(sim)$igAggFactor, fun = mean) |>
+    Cache(.functionName = "aggregate_historicalClimateRasters_forTemplate")
+
   coords <- st_coordinates(escapes)
   escapeCells <- cellFromXY(aggregatedRas, coords)
   escapeDT <- as.data.table(escapes)
