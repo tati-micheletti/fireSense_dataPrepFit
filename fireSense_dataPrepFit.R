@@ -680,7 +680,7 @@ prepare_IgnitionFit <- function(sim) {
                                       LCC = list(LCCras$year2001, LCCras$year2011),
                                       MoreArgs = list(climate = climate,
                                                       fires = sim$ignitionFirePoints,
-                                                      climVar = climVar #TODO: this is clunky, rethink
+                                                      climVar = climVar ## TODO: this is clunky, rethink
                                       ))
 
   fireSense_ignitionCovariates <- rbindlist(fireSense_ignitionCovariates)
@@ -702,7 +702,6 @@ prepare_IgnitionFit <- function(sim) {
   firstCols <- firstCols[firstCols %in% names(fireSense_ignitionCovariates)]
   setcolorder(fireSense_ignitionCovariates, neworder = firstCols)
   sim$fireSense_ignitionCovariates <- fireSense_ignitionCovariates
-
 
   #make new ignition object, ignitionFitRTM
   sim$ignitionFitRTM <- rast(fuelClasses$year2001[[1]])
@@ -968,8 +967,7 @@ rmMissingPixels <- function(fbldt, pixelIDsAllowed)  {
 }
 
 runBorealDP_forCohortData <- function(sim) {
-
-  #Biomass_species should be only run if it is already in the simList
+  ## Biomass_species should be only run if it is already in the simList
   neededModule <- "Biomass_borealDataPrep"
   if ("Biomass_speciesData" %in% modules(sim)) {
     neededModule <- c("Biomass_borealDataPrep", "Biomass_speciesData")
@@ -1003,8 +1001,11 @@ runBorealDP_forCohortData <- function(sim) {
 
     neededYears <- setdiff(neededYears, alreadyDone)
   }
-  if (is.null(sim$studyAreaLarge))
+
+  if (is.null(sim$studyAreaLarge)) {
     sim$studyAreaLarge <- sim$studyArea
+  }
+
   ecoFile <- ifelse(is.null(sim$ecoregionRst), "ecoregionLayer", "ecoregionRst")
   objsNeeded <- c(ecoFile,
                   "rasterToMatchLarge", "rasterToMatch",
@@ -1018,7 +1019,7 @@ runBorealDP_forCohortData <- function(sim) {
     messageColoured(colour = "yellow", "  inside fireSense_dataPrepFit to estimate cohortData", ny)
 
     parms <- list()
-    #if needModule is vectorized - we will have to rethink
+    ## if needModule is vectorized - we will have to rethink
     for (nm in neededModule) {
       parms[[nm]] <- P(sim, module = nm)
       parms[[nm]][["dataYear"]] <- ny
